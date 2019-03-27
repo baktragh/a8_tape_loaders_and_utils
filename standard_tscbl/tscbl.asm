@@ -164,10 +164,10 @@ GS_GETD   lda BLSEGHEAD
 ;-------------------------------------------------------------------------------
 ; INIT segment handling
 ;-------------------------------------------------------------------------------          
-          lda 738                ;Check if there was real INIT segment
+          lda INITAD             ;Check if there was real INIT segment
           cmp #<FAKEINIT
           bne REALINI
-          lda 739
+          lda INITAD+1
           cmp #>FAKEINIT
           beq POSTINI
           
@@ -196,14 +196,14 @@ GBERR     cmp #136                  ;Is this EOF ?
           ldx #255                  ;Yes, this is EOF
           txs                       ;Clear stack
           jsr FCLOSE                ;Close file
-          jmp (736)                 ;Run the program
+          jmp (RUNAD)                 ;Run the program
         
 GBERR_S   jmp ERRHNDL
  
 ;===============================================================================
 ;Emulation of JSR(738)
 ;===============================================================================
-DOINIT    jmp (738)
+DOINIT    jmp (INITAD)
 FAKEINIT  rts
 ;===============================================================================
 ;Main data area
@@ -247,8 +247,7 @@ ERRHNDL  lda #$24                ;I/O error - red background
          bne ERRSIG
 ERRNOBIN lda #$0E                ;Not a binary file - white background
   
-ERRSIG   sta COLDST              ;Allow cold start after RESET temporarily
-         sta COLOR4              ;Signalize error by changing background
+ERRSIG   sta COLOR4              ;Signalize error by changing background
          sta COLOR2
          sta COLBK
          sta COLPF2
@@ -313,19 +312,20 @@ SCREEN    lda CONFIG_BG           ;Set background
           rts
 ;-------------------------------------------------------------------------------
 ; Program title and Configuration bytes
+; Defaults: 148,202,1,0
 ;-------------------------------------------------------------------------------
 CONFIG_EYE      .BYTE "@CBL"          ;Eye-catcher
 CONFIG_TITLE    .BYTE 125             ;Clear screen
 CONFIG_NAME     .BYTE "TSCBL                             "
 CONFIG_NAME_EOL .BYTE 155             ;End of line
 CONFIG_BG       .BYTE 148             ;Background color             
-CONFIG_FG       .BYTE 12              ;Foreground color                  
-CONFIG_SNDR     .BYTE 0               ;SOUNDR value                  
-CONFIG_CRSR     .BYTE 1               ;Cursor on-off
+CONFIG_FG       .BYTE 202             ;Foreground color                  
+CONFIG_SNDR     .BYTE 1               ;SOUNDR value                  
+CONFIG_CRSR     .BYTE 0               ;Cursor on-off
 ;===============================================================================
 ; RUN segment
 ;===============================================================================
 .IF LDRTYPE=1
-          *=736
+          *=RUNAD
           .BYTE <BL000,>BL000
 .ENDIF          
