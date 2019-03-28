@@ -1,0 +1,59 @@
+TSCBL - TURGEN SYSTEM CASSETTE BINARY LOADER
+Version 1.0
+================================================================================
+
+Overview
+--------
+TSCBL is a simple binary loader for cassettes. TSCBL loads DOS 2 binary
+load files from cassette stored in the standard format used by the C: CIO
+device. The INITAD jumps are fully supported, the motor is stopped when these
+jumps are performed.
+
+Errors
+------
+A light gray screen indicates that the loaded file is not a binary load file.
+Press any key to restart the loader
+
+A purple screen indicates loading error.
+Press any key to restart the loader.
+
+Controls
+--------
+Press RESET to perform warm start and restart the loader.
+Holding SELECT during restart of the loader will initiate cold start
+of the computer.
+
+Customization
+-------------
+TSCBL can be customized by changing bytes close to the end of the loader
+code. 
+Navigate to the eye-catcher '@CBL' and note its offset as 0.
+You can then change bytes as follows:
+
+Offset (decimal)   Length   Description
+--------------------------------------------------------------------------------  
+ 0                      4   '@CBL' eye-catcher
+ 4                      1   Clear screen character #125      
+ 5                     34   File name (ATASCII)
+39                      1   End of line #155
+40                      1   Background color
+41                      1   Foreground color (luminance)
+42                      1   SOUNDR (Set to 0 for silent I/O)
+43                      1   CRSINH (Set to 1 to hide cursor)  
+--------------------------------------------------------------------------------
+
+Segments
+--------
+TSCBL expects binary load files to begin with the 255 255 header. Additional
+255 255 headers before other segments are tolerated. TSCBL doesn't set RUNAD
+to the first segment loaded. Binary load files without RUNAD are not started.
+
+IOCB
+----
+TSCBL uses IOCB #1 to read the binary load file.
+
+Inter-Record-Gaps
+-----------------
+TSCBL expects short inter-record-gaps (250 ms) between blocks,
+except gaps after blocks that hold INIT vectors. As the motor is switched off
+after blocks that hold INIT vectors, gaps of at least 1000 ms are needed. 

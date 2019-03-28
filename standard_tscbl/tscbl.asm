@@ -48,11 +48,13 @@
 ; Boot header
 ;-------------------------------------------------------------------------------
 .IF LDRTYPE=0
-BOOTHEAD  .BYTE 0
-          .BYTE 3
-          .WORD [LDR_START]
-          .WORD FAKEINIT
-          
+BOOTHEAD  .BYTE 0                 ;Boot flag 0
+          .BYTE 3                 ;3 blocks + 1 EOF blocks
+          .WORD [LDR_START]       ;Load address
+          .WORD FAKEINIT          ;Initialization address - just RTS
+;-------------------------------------------------------------------------------
+; Boot continuation code
+;-------------------------------------------------------------------------------          
           lda  #60                ;Motor off
           sta  PACTL
           ldx  #255               ;Clear pushdown store
@@ -69,26 +71,26 @@ RELO_P2_L lda  [1024-1],X         ;from cassette buffer
 ;-------------------------------------------------------------------------------
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
-BL000     jsr  STARTUP            ;Display program name
+BL000     jsr  STARTUP            ;Establish this loader as "DOS"
 
-BLTOP     jsr  SCREEN             ;Set screen
-          lda #0                  ;Reset header flag found
+BLTOP     jsr  SCREEN             ;Set screen and display title
+          lda #0                  ;Reset flag indicating 255 255 header found
           sta BL_HDR_FOUND                          
           
           lda CONSOL              ;Check for SELECT key
           cmp #5
-          bne BLFCLOS             ;If not, continue
-          jmp COLDSV              ;Else perform cold start
+          bne BLFCLOS             ;If not pressed, continue
+          jmp COLDSV              ;Otherwise perform cold start
           
-BLFCLOS   jsr FCLOSE
-          jsr FOPEN               ;Call subroutine that opens C: file
+BLFCLOS   jsr FCLOSE              ;Close channel #1 
+          jsr FOPEN               ;Open C: file
           lda CIO1_STAT           ;Check for error
           bpl GETSEG              ;No error, continue
-          jmp ERRHNDL             ;If error occured, go to handle it
+          jmp ERRHNDL             ;If error occured, handle it
 
-;-------------------------------------------------------------------------------
+;===============================================================================
 ; Read a segment 
-;-------------------------------------------------------------------------------
+;===============================================================================
 GETSEG    lda #<FAKEINIT          ;Set fake INIT vector to RTS
           sta INITAD
           lda #>FAKEINIT
@@ -97,7 +99,7 @@ GETSEG    lda #<FAKEINIT          ;Set fake INIT vector to RTS
 ;-------------------------------------------------------------------------------
 ; Get segment header
 ;-------------------------------------------------------------------------------
-GS_STRTA  lda #<BLSEGHEAD         ;Read first two bytes of segment header
+GS_STRTA  lda #<BLSEGHEAD         ;Read the first two bytes of segment header
           sta CIO1_BUFLO
           lda #>BLSEGHEAD
           sta CIO1_BUFHI
@@ -128,11 +130,11 @@ GS_ENDA   lda #<[BLSEGHEAD+2]     ;Get rest of the segment header
           jsr GETBLK
           
 ;-------------------------------------------------------------------------------
-; 255 255 header check.
+; Header (255 255) check 
 ;-------------------------------------------------------------------------------
           lda BL_HDR_FOUND       ;Check if 255 255 header was found
           bne GS_CALCLN          ;It was, we can continue
-          jmp ERRNOBIN           ;If not, we signalize an error and continue
+          jmp ERRNOBIN           ;If not, this is not a binary load file
 ;-------------------------------------------------------------------------------
 ; Calculate length of the segment           
 ;-------------------------------------------------------------------------------          
@@ -154,7 +156,7 @@ GS_LENHI  sec
           bcc GS_GETD
           inc CIO1_LENHI
 ;-------------------------------------------------------------------------------          
-;Read segment data          
+; Read segment data to its location in the memory          
 ;-------------------------------------------------------------------------------          
 GS_GETD   lda BLSEGHEAD
           sta CIO1_BUFLO
@@ -162,7 +164,7 @@ GS_GETD   lda BLSEGHEAD
           sta CIO1_BUFHI
           jsr GETBLK
 ;-------------------------------------------------------------------------------
-; INIT segment handling
+; Perform jump through INITAD if needed
 ;-------------------------------------------------------------------------------          
           lda INITAD             ;Check if there was real INIT segment
           cmp #<FAKEINIT
@@ -196,7 +198,8 @@ GBERR     cmp #136                  ;Is this EOF ?
           ldx #255                  ;Yes, this is EOF
           txs                       ;Clear stack
           jsr FCLOSE                ;Close file
-          jmp (RUNAD)                 ;Run the program
+          
+          jmp (RUNAD)               ;Run the program
         
 GBERR_S   jmp ERRHNDL
  
@@ -209,7 +212,7 @@ FAKEINIT  rts
 ;Main data area
 ;===============================================================================
 BLSEGHEAD    .BYTE 0,0,0,0        ;Segment header and position pointer
-BL_HDR_FOUND .BYTE 0              ;Binary file header found ($FF $FF)
+BL_HDR_FOUND .BYTE 0              ;Binary file header flag (255 255)
 CDEV         .BYTE "C:",155       ;File name
 ;===============================================================================
 ;Subroutine that closes file
@@ -311,7 +314,7 @@ SCREEN    lda CONFIG_BG           ;Set background
           
           rts
 ;-------------------------------------------------------------------------------
-; Program title and Configuration bytes
+; Program title and configuration bytes
 ; Defaults: 148,202,1,0
 ;-------------------------------------------------------------------------------
 CONFIG_EYE      .BYTE "@CBL"          ;Eye-catcher
@@ -328,4 +331,4 @@ CONFIG_CRSR     .BYTE 0               ;Cursor on-off
 .IF LDRTYPE=1
           *=RUNAD
           .BYTE <BL000,>BL000
-.ENDIF          
+.ENDIF
