@@ -15,6 +15,8 @@
 
 ;Using the LDRTYPE symbol, this loader can be assembled 
 ;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file. 
+
+;2019-07-18 Initial version
 ;===============================================================================
 
           .INCLUDE "equates.asm"
