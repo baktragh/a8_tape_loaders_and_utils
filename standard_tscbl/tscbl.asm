@@ -112,7 +112,23 @@ SCREEN    lda CONFIG_BG           ;Set background
           jmp COLDSV              ;Otherwise perform cold start
           
 BLFCLOS   jsr FCLOSE              ;Close channel #1 
-          jsr FOPEN               ;Open C: file
+                                  ;Open C: file
+FOPEN     lda #4                 ;Auxiliary value 4 - open for reading
+          sta CIO1_AUX1
+          
+          lda #12                ;And also simulate key press
+          sta CH                 
+                       
+          lda #128               ;Auxiliary value 128 - short IRGs
+          sta CIO1_AUX2
+          lda #<CDEV             ;Buffer- DEVICE:FILENAME ("C:")
+          sta CIO1_BUFLO
+          lda #>CDEV
+          sta CIO1_BUFHI
+          
+          lda #3                 ;Requesting CIO OPEN operation with code 3
+          jsr CIO_OP1            ;Call CIO in channel 1
+
           bmi ERRHNDL             ;If error occured, handle it
 
 ;===============================================================================
@@ -260,25 +276,6 @@ FCLOSE    lda #12         ;Requesting CIO CLOSE operation with code 12
 CIO_OP1   ldx #16         ;Calls CIO one channel 1 and operation in A
           sta CIO1_OP    
           jmp CIOV        ;Call CIO and return
-
-;===============================================================================
-;Subroutine that opens file
-;===============================================================================
-FOPEN     lda #4                 ;Auxiliary value 4 - open for reading
-          sta CIO1_AUX1
-          
-          lda #12                ;And also simulate key press
-          sta CH                 
-                       
-          lda #128               ;Auxiliary value 128 - short IRGs
-          sta CIO1_AUX2
-          lda #<CDEV             ;Buffer- DEVICE:FILENAME ("C:")
-          sta CIO1_BUFLO
-          lda #>CDEV
-          sta CIO1_BUFHI
-          
-          lda #3                 ;Requesting CIO OPEN operation with code 3
-          bne CIO_OP1            ;Call CIO in channel 1
 
 ;===============================================================================
 ; Loader startup
