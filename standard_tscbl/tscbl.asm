@@ -91,7 +91,6 @@ SCREEN    lda CONFIG_BG           ;Set background
           lda CONFIG_CRSR         ;Set cursor visibility
           sta CRSINH
           
-          ldx #0                  ;Channel 0
           lda #9                  ;Requesting PRINT
           sta CIO0_OP
           lda #<CONFIG_TITLE
@@ -100,12 +99,12 @@ SCREEN    lda CONFIG_BG           ;Set background
           sta CIO0_BUFHI
           lda #[1+34+1]
           sta CIO0_LENLO
-          lda #0
-          sta CIO0_LENHI
+          ldx #0                  ;Channel 0
+          stx CIO0_LENHI
           jsr CIOV                ;Call CIO
           
-          lda #0                  ;Reset flag indicating 255 255 header found
-          sta BL_HDR_FOUND                          
+                                  ;Reset flag indicating 255 255 header found
+          stx BL_HDR_FOUND                          
           
           lda CONSOL              ;Check for SELECT key
           cmp #5
