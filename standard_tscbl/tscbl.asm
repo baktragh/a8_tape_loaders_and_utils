@@ -276,14 +276,12 @@ STARTUP   lda #0                  ;Reset cold start flag
           sta COLDST
           lda #1                  ;Indicate disk boot succeded
           sta BOOT
-          jsr DINI
           
           lda #<DINI              ;Setup DOSINI
           sta DOSINI
           lda #>DINI
           sta DOSINI+1
-          
-          rts 
+                                  ;Falls trough DINI to also setup DOSVEC
           
 DINI      lda #<BLTOP             ;DOSINI sets DOSVEC
           sta DOSVEC
