@@ -64,11 +64,13 @@ BOOTHEAD  .BYTE 0                 ;Boot flag 0
 ;-------------------------------------------------------------------------------
 ; Move last portion of the loader code from cassette buffer
 ;-------------------------------------------------------------------------------
-RELO_P2   ldx  #128               ;Move 128 bytes of the EOF block
-RELO_P2_L lda  [1024-1],X         ;from cassette buffer
-          sta  [LDR_START+384-1],X  ;to the intended place
+                                  ;Move 128 bytes of the EOF block from cassette
+                                  ;buffer to the intended place.
+                                  ;X = 255 from above, loop down to 128.
+RELO_P2_L lda  [1024-128],X
+          sta  [LDR_START+384-128],X
           dex  
-          bne  RELO_P2_L
+          bmi  RELO_P2_L
 .ENDIF         
 ;-------------------------------------------------------------------------------
 ; Loader mainline code
