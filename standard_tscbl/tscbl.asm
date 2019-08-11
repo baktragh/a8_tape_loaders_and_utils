@@ -141,14 +141,12 @@ GETSEG    lda #255                ;Set fake INIT vector to $FFFF (fake value)
 ;-------------------------------------------------------------------------------
 ; Get segment header
 ;-------------------------------------------------------------------------------
-GS_STRTA  lda #<BLSEGHEAD         ;Read the first two bytes of segment header
-          sta CIO1_BUFLO
-          lda #>BLSEGHEAD
-          sta CIO1_BUFHI
-          lda #2
+GS_STRTA  lda #2                  ;Read the first two bytes of segment header
           sta CIO1_LENLO
           lda #0
           sta CIO1_LENHI
+          ldy #<BLSEGHEAD
+          lda #>BLSEGHEAD
           jsr GETBLK
            
           lda BLSEGHEAD           ;Check for 255 255
@@ -160,14 +158,12 @@ GS_STRTA  lda #<BLSEGHEAD         ;Read the first two bytes of segment header
           beq GS_STRTA            ;And then start over
           
           
-GS_ENDA   lda #<[BLSEGHEAD+2]     ;Get rest of the segment header 
-          sta CIO1_BUFLO
-          lda #>[BLSEGHEAD+2]
-          sta CIO1_BUFHI
-          lda #2
+GS_ENDA   lda #2                  ;Get rest of the segment header
           sta CIO1_LENLO
           lda #0
           sta CIO1_LENHI
+          ldy #<[BLSEGHEAD+2]
+          lda #>[BLSEGHEAD+2]
           jsr GETBLK
           
 ;-------------------------------------------------------------------------------
@@ -217,10 +213,8 @@ GS_CALCLN sec                    ;Subtract start address from end address
 ;-------------------------------------------------------------------------------          
 ; Read segment data to its location in the memory          
 ;-------------------------------------------------------------------------------          
-GS_GETD   lda BLSEGHEAD
-          sta CIO1_BUFLO
+GS_GETD   ldy BLSEGHEAD
           lda BLSEGHEAD+1
-          sta CIO1_BUFHI
           jsr GETBLK
 ;-------------------------------------------------------------------------------
 ; Perform jump through INITAD if needed
@@ -251,10 +245,13 @@ GBERR     cpy #136                  ;Is this EOF ?
         
  
 ;===============================================================================
-;Subroutine that gets a blocks using CIO. Buffer address and length of
-;the block must be set by the caller.
+;Subroutine that gets a blocks using CIO. Buffer length of the block must be set
+;by the caller, A and Y holds buffer address HI/LO.
+;
 ;===============================================================================
-GETBLK    lda #7                    ;Requesting CIO READ operation
+GETBLK    sta CIO1_BUFHI
+          sty CIO1_BUFLO
+          lda #7                    ;Requesting CIO READ operation
           jsr CIO_OP1               ;Call CIO on channel 1
                                     ;Check for error
           bmi GBERR                 ;Error occured - handle it
