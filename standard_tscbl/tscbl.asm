@@ -77,7 +77,33 @@ RELO_P2_L lda  [1024-128],X
 ;-------------------------------------------------------------------------------
 BL000     jsr  STARTUP            ;Establish this loader as "DOS"
 
-BLTOP     jsr  SCREEN             ;Set screen and display title
+;===============================================================================
+; Loader Screen
+;===============================================================================
+BLTOP                             ;Set screen and display title:
+
+SCREEN    lda CONFIG_BG           ;Set background
+          sta COLOR2
+          lda CONFIG_FG           ;Set foreground
+          sta COLOR1
+          lda CONFIG_SNDR         ;Set SOUNDR
+          sta SOUNDR
+          lda CONFIG_CRSR         ;Set cursor visibility
+          sta CRSINH
+          
+          ldx #0                  ;Channel 0
+          lda #9                  ;Requesting PRINT
+          sta CIO0_OP
+          lda #<CONFIG_TITLE
+          sta CIO0_BUFLO
+          lda #>CONFIG_TITLE
+          sta CIO0_BUFHI
+          lda #[1+34+1]
+          sta CIO0_LENLO
+          lda #0
+          sta CIO0_LENHI
+          jsr CIOV                ;Call CIO
+          
           lda #0                  ;Reset flag indicating 255 255 header found
           sta BL_HDR_FOUND                          
           
@@ -289,31 +315,6 @@ DINI      lda #<BLTOP             ;DOSINI sets DOSVEC
           sta DOSVEC+1
           rts
 
-;===============================================================================
-; Loader Screen
-;===============================================================================                    
-SCREEN    lda CONFIG_BG           ;Set background
-          sta COLOR2
-          lda CONFIG_FG           ;Set foreground
-          sta COLOR1
-          lda CONFIG_SNDR         ;Set SOUNDR
-          sta SOUNDR
-          lda CONFIG_CRSR         ;Set cursor visibility
-          sta CRSINH
-          
-          ldx #0                  ;Channel 0
-          lda #9                  ;Requesting PRINT
-          sta CIO0_OP
-          lda #<CONFIG_TITLE
-          sta CIO0_BUFLO
-          lda #>CONFIG_TITLE
-          sta CIO0_BUFHI
-          lda #[1+34+1]
-          sta CIO0_LENLO
-          lda #0
-          sta CIO0_LENHI
-          jmp CIOV                ;Call CIO and return
-          
 ;-------------------------------------------------------------------------------
 ; Program title and configuration bytes
 ; Defaults: 148,202,1,0
