@@ -75,34 +75,9 @@ RELO_P2_L lda  [1024-128],X
 ;-------------------------------------------------------------------------------
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
-BL000     jsr  STARTUP            ;Establish this loader as "DOS"
+BL000
+BLTOP     jsr  SCREEN             ;Establish this loader as "DOS", setups screen
 
-;===============================================================================
-; Loader Screen
-;===============================================================================
-BLTOP                             ;Set screen and display title:
-
-SCREEN    lda CONFIG_BG           ;Set background
-          sta COLOR2
-          lda CONFIG_FG           ;Set foreground
-          sta COLOR1
-          lda CONFIG_SNDR         ;Set SOUNDR
-          sta SOUNDR
-          lda CONFIG_CRSR         ;Set cursor visibility
-          sta CRSINH
-          
-          lda #9                  ;Requesting PRINT
-          sta CIO0_OP
-          lda #<CONFIG_TITLE
-          sta CIO0_BUFLO
-          lda #>CONFIG_TITLE
-          sta CIO0_BUFHI
-          lda #[1+34+1]
-          sta CIO0_LENLO
-          ldx #0                  ;Channel 0
-          stx CIO0_LENHI
-          jsr CIOV                ;Call CIO
-          
                                   ;Reset flag indicating 255 255 header found
           stx BL_HDR_FOUND                          
           
@@ -276,6 +251,30 @@ CIO_OP1   ldx #16         ;Calls CIO one channel 1 and operation in A
           sta CIO1_OP    
           jmp CIOV        ;Call CIO and return
 
+;===============================================================================
+; Loader Screen
+;===============================================================================
+SCREEN    lda CONFIG_BG           ;Set background
+          sta COLOR2
+          lda CONFIG_FG           ;Set foreground
+          sta COLOR1
+          lda CONFIG_SNDR         ;Set SOUNDR
+          sta SOUNDR
+          lda CONFIG_CRSR         ;Set cursor visibility
+          sta CRSINH
+          
+          lda #9                  ;Requesting PRINT
+          sta CIO0_OP
+          lda #<CONFIG_TITLE
+          sta CIO0_BUFLO
+          lda #>CONFIG_TITLE
+          sta CIO0_BUFHI
+          lda #[1+34+1]
+          sta CIO0_LENLO
+          ldx #0                  ;Channel 0
+          stx CIO0_LENHI
+          jsr CIOV                ;Call CIO
+          ;Fall through to STARTUP
 ;===============================================================================
 ; Loader startup
 ;===============================================================================
