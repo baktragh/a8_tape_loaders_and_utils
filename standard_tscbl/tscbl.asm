@@ -113,7 +113,7 @@ SCREEN    lda CONFIG_BG           ;Set background
           
 BLFCLOS   jsr FCLOSE              ;Close channel #1 
           jsr FOPEN               ;Open C: file
-          lda CIO1_STAT           ;Check for error
+                                  ;Check for error
           bpl GETSEG              ;No error, continue
           jmp ERRHNDL             ;If error occured, handle it
 
@@ -218,11 +218,11 @@ GETBLK    ldx #16                   ;Channel 1
           lda #7                    ;Requesting CIO READ operation
           sta CIO1_OP             
           jsr CIOV                  ;Call CIO
-          lda CIO1_STAT             ;Check for error
+                                    ;Check for error
           bmi GBERR                 ;Error occured - handle it
           rts
           
-GBERR     cmp #136                  ;Is this EOF ?
+GBERR     cpy #136                  ;Is this EOF ?
           bne GBERR_S               ;No - handle error
           ldx #255                  ;Yes, this is EOF
           txs                       ;Clear stack
