@@ -21,7 +21,7 @@
 
           .INCLUDE "equates.asm"
 .IF LDRTYPE=0          
-          LDR_START=[2048-24]
+          LDR_START=[2048-23]
 .ELSE
           LDR_START=2048
 .ENDIF
