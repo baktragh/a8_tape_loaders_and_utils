@@ -178,8 +178,7 @@ ERRSIG   sta COLOR4              ;Signalize error by changing background
          
          lda #255                ;Wait for any key
          sta CH
-WFORKEYL lda CH
-         cmp #255
+WFORKEYL cmp CH
          beq WFORKEYL
          
 ERRREST  jmp WARMSV              ;Perform warm reset 
