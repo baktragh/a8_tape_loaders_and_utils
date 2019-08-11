@@ -224,8 +224,8 @@ CDEV         .BYTE "C:",155       ;File name
 FCLOSE    ldx #16
           lda #12         ;Requesting CIO CLOSE operation with code 12
           sta CIO1_OP    
-          jsr CIOV        ;Call CIO
-          rts             
+          jmp CIOV        ;Call CIO and return
+
 ;===============================================================================
 ;Subroutine that opens file
 ;===============================================================================
@@ -245,8 +245,8 @@ FOPEN     ldx #16                ;IOCB 1
           lda #>CDEV
           sta CIO1_BUFHI
           
-          jsr CIOV               ;Call CIO
-          rts 
+          jmp CIOV               ;Call CIO and return
+
 ;===============================================================================
 ;Error handling
 ;===============================================================================
@@ -312,9 +312,8 @@ SCREEN    lda CONFIG_BG           ;Set background
           sta CIO0_LENLO
           lda #0
           sta CIO0_LENHI
-          jsr CIOV                ;Call CIO
+          jmp CIOV                ;Call CIO and return
           
-          rts
 ;-------------------------------------------------------------------------------
 ; Program title and configuration bytes
 ; Defaults: 148,202,1,0
