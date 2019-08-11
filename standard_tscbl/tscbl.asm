@@ -141,13 +141,10 @@ GETSEG    lda #255                ;Set fake INIT vector to $FFFF (fake value)
 ;-------------------------------------------------------------------------------
 ; Get segment header
 ;-------------------------------------------------------------------------------
-GS_STRTA  lda #2                  ;Read the first two bytes of segment header
-          sta CIO1_LENLO
-          lda #0
-          sta CIO1_LENHI
+GS_STRTA  ;Read the first two bytes of segment header
           ldy #<BLSEGHEAD
           lda #>BLSEGHEAD
-          jsr GETBLK
+          jsr GETBLK_2
            
           lda BLSEGHEAD           ;Check for 255 255
           and BLSEGHEAD+1
@@ -158,13 +155,10 @@ GS_STRTA  lda #2                  ;Read the first two bytes of segment header
           beq GS_STRTA            ;And then start over
           
           
-GS_ENDA   lda #2                  ;Get rest of the segment header
-          sta CIO1_LENLO
-          lda #0
-          sta CIO1_LENHI
+GS_ENDA   ;Get rest of the segment header
           ldy #<[BLSEGHEAD+2]
           lda #>[BLSEGHEAD+2]
-          jsr GETBLK
+          jsr GETBLK_2
           
 ;-------------------------------------------------------------------------------
 ; Header (255 255) check 
@@ -244,10 +238,18 @@ GBERR     cpy #136                  ;Is this EOF ?
           jmp (RUNAD)               ;Run the program
         
  
+
+;===============================================================================
+;Calls GETBLK with a length of 2 bytes.
+;===============================================================================
+GETBLK_2  ldx #2
+          stx CIO1_LENLO
+          ldx #0
+          stx CIO1_LENHI
+          ; Fall through
 ;===============================================================================
 ;Subroutine that gets a blocks using CIO. Buffer length of the block must be set
 ;by the caller, A and Y holds buffer address HI/LO.
-;
 ;===============================================================================
 GETBLK    sta CIO1_BUFHI
           sty CIO1_BUFLO
