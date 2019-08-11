@@ -136,10 +136,9 @@ GS_STRTA  lda #<BLSEGHEAD         ;Read the first two bytes of segment header
           sta CIO1_LENHI
           jsr GETBLK
            
-          lda #255                ;Check for 255 255
-          cmp BLSEGHEAD
-          bne GS_ENDA
-          cmp BLSEGHEAD+1
+          lda BLSEGHEAD           ;Check for 255 255
+          and BLSEGHEAD+1
+          cmp #255
           bne GS_ENDA             ;If 255 255 not found, continue
           
           sta BL_HDR_FOUND        ;Indicate header was found
