@@ -191,18 +191,13 @@ GS_CALCLN sec                    ;Subtract start address from end address
           lda BLSEGHEAD+2        
           sbc BLSEGHEAD+0
           sta CIO1_LENLO
-          bcs GS_LENHI
-          dec BLSEGHEAD+3
-GS_LENHI  sec
           lda BLSEGHEAD+3
           sbc BLSEGHEAD+1
           sta CIO1_LENHI
           
-          clc                    ;Increase the difference by 1 to get length
-          lda CIO1_LENLO
-          adc #1
-          sta CIO1_LENLO
-          bcc GS_GETD
+                                 ;Increase the difference by 1 to get length
+          inc CIO1_LENLO
+          bne GS_GETD
           inc CIO1_LENHI
 ;-------------------------------------------------------------------------------          
 ; Read segment data to its location in the memory          
