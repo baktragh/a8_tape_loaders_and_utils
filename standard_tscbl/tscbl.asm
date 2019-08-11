@@ -286,10 +286,10 @@ FOPEN     ldx #16                ;IOCB 1
 ;===============================================================================
 ; Loader startup
 ;===============================================================================
-STARTUP   lda #0                  ;Reset cold start flag
-          sta COLDST
-          lda #1                  ;Indicate disk boot succeded
-          sta BOOT
+STARTUP   ldx #0                  ;Reset cold start flag
+          stx COLDST
+          inx                     ;Indicate disk boot succeded
+          stx BOOT
           
           lda #<DINI              ;Setup DOSINI
           sta DOSINI
