@@ -113,9 +113,7 @@ SCREEN    lda CONFIG_BG           ;Set background
           
 BLFCLOS   jsr FCLOSE              ;Close channel #1 
           jsr FOPEN               ;Open C: file
-                                  ;Check for error
-          bpl GETSEG              ;No error, continue
-          jmp ERRHNDL             ;If error occured, handle it
+          bmi ERRHNDL             ;If error occured, handle it
 
 ;===============================================================================
 ; Read a segment 
@@ -163,7 +161,31 @@ GS_ENDA   lda #<[BLSEGHEAD+2]     ;Get rest of the segment header
 ;-------------------------------------------------------------------------------
           lda BL_HDR_FOUND       ;Check if 255 255 header was found
           bne GS_CALCLN          ;It was, we can continue
-          jmp ERRNOBIN           ;If not, this is not a binary load file
+                                 ;If not, this is not a binary load file
+;===============================================================================
+;Error handling
+;===============================================================================
+ERRNOBIN lda #$0E                ;Not a binary file - white background
+         bne ERRSIG
+
+ERRHNDL  lda #$24                ;I/O error - red background
+
+ERRSIG   sta COLOR4              ;Signalize error by changing background
+         sta COLOR2
+         sta COLBK
+         sta COLPF2
+         lda #60                 ;Switch off the motor
+         sta PACTL  
+         
+         lda #255                ;Wait for any key
+         sta CH
+WFORKEYL lda CH
+         cmp #255
+         beq WFORKEYL
+         
+ERRREST  jmp WARMSV              ;Perform warm reset 
+         
+
 ;-------------------------------------------------------------------------------
 ; Calculate length of the segment           
 ;-------------------------------------------------------------------------------          
@@ -211,6 +233,18 @@ REALINI   lda #60                ;Switch off the motor
 POSTINI   jmp GETSEG             ;Get another segment
 
 ;===============================================================================
+;Handle errors in GETBLK.
+;===============================================================================
+GBERR     cpy #136                  ;Is this EOF ?
+          bne ERRHNDL               ;No - handle error
+          ldx #255                  ;Yes, this is EOF
+          txs                       ;Clear stack
+          jsr FCLOSE                ;Close file
+          
+          jmp (RUNAD)               ;Run the program
+        
+ 
+;===============================================================================
 ;Subroutine that gets a blocks using CIO. Buffer address and length of
 ;the block must be set by the caller.
 ;===============================================================================
@@ -222,16 +256,6 @@ GETBLK    ldx #16                   ;Channel 1
           bmi GBERR                 ;Error occured - handle it
           rts
           
-GBERR     cpy #136                  ;Is this EOF ?
-          bne GBERR_S               ;No - handle error
-          ldx #255                  ;Yes, this is EOF
-          txs                       ;Clear stack
-          jsr FCLOSE                ;Close file
-          
-          jmp (RUNAD)               ;Run the program
-        
-GBERR_S   jmp ERRHNDL
- 
 ;===============================================================================
 ;Emulation of JSR(738)
 ;===============================================================================
@@ -272,28 +296,6 @@ FOPEN     ldx #16                ;IOCB 1
           
           jmp CIOV               ;Call CIO and return
 
-;===============================================================================
-;Error handling
-;===============================================================================
-ERRHNDL  lda #$24                ;I/O error - red background
-         bne ERRSIG
-ERRNOBIN lda #$0E                ;Not a binary file - white background
-  
-ERRSIG   sta COLOR4              ;Signalize error by changing background
-         sta COLOR2
-         sta COLBK
-         sta COLPF2
-         lda #60                 ;Switch off the motor
-         sta PACTL  
-         
-         lda #255                ;Wait for any key
-         sta CH
-WFORKEYL lda CH
-         cmp #255
-         beq WFORKEYL
-         
-ERRREST  jmp WARMSV              ;Perform warm reset 
-         
 ;===============================================================================
 ; Loader startup
 ;===============================================================================
