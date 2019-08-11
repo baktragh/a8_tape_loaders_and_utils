@@ -142,7 +142,7 @@ GS_STRTA  lda #<BLSEGHEAD         ;Read the first two bytes of segment header
           bne GS_ENDA             ;If 255 255 not found, continue
           
           sta BL_HDR_FOUND        ;Indicate header was found
-          jmp GS_STRTA            ;And then start over
+          beq GS_STRTA            ;And then start over
           
           
 GS_ENDA   lda #<[BLSEGHEAD+2]     ;Get rest of the segment header 
