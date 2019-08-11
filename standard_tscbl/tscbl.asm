@@ -253,8 +253,6 @@ DOINIT    jmp (INITAD)
 ;===============================================================================
 ;Main data area
 ;===============================================================================
-BLSEGHEAD    .BYTE 0,0,0,0        ;Segment header and position pointer
-BL_HDR_FOUND .BYTE 0              ;Binary file header flag (255 255)
 CDEV         .BYTE "C:",155       ;File name
 ;===============================================================================
 ;Subroutine that closes file
@@ -317,6 +315,13 @@ CONFIG_BG       .BYTE 148             ;Background color
 CONFIG_FG       .BYTE 202             ;Foreground color                  
 CONFIG_SNDR     .BYTE 1               ;SOUNDR value                  
 CONFIG_CRSR     .BYTE 0               ;Cursor on-off
+
+;===============================================================================
+; Uninitialized data here - use first bytes before main loader
+;===============================================================================
+BL_HDR_FOUND = BLTOP - 5          ;Binary file header flag (255 255) (1 byte)
+BLSEGHEAD    = BLTOP - 4          ;Segment header and position pointer (4 bytes)
+
 ;===============================================================================
 ; RUN segment
 ;===============================================================================
