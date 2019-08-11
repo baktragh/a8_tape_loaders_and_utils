@@ -238,10 +238,8 @@ GBERR     cpy #136                  ;Is this EOF ?
 ;Subroutine that gets a blocks using CIO. Buffer address and length of
 ;the block must be set by the caller.
 ;===============================================================================
-GETBLK    ldx #16                   ;Channel 1
-          lda #7                    ;Requesting CIO READ operation
-          sta CIO1_OP             
-          jsr CIOV                  ;Call CIO
+GETBLK    lda #7                    ;Requesting CIO READ operation
+          jsr CIO_OP1               ;Call CIO on channel 1
                                     ;Check for error
           bmi GBERR                 ;Error occured - handle it
           rts
@@ -257,18 +255,16 @@ CDEV         .BYTE "C:",155       ;File name
 ;===============================================================================
 ;Subroutine that closes file
 ;===============================================================================
-FCLOSE    ldx #16
-          lda #12         ;Requesting CIO CLOSE operation with code 12
+FCLOSE    lda #12         ;Requesting CIO CLOSE operation with code 12
+
+CIO_OP1   ldx #16         ;Calls CIO one channel 1 and operation in A
           sta CIO1_OP    
           jmp CIOV        ;Call CIO and return
 
 ;===============================================================================
 ;Subroutine that opens file
 ;===============================================================================
-FOPEN     ldx #16                ;IOCB 1
-          lda #3                 ;Requesting CIO OPEN operation with code 3
-          sta CIO1_OP
-          lda #4                 ;Auxiliary value 4 - open for reading
+FOPEN     lda #4                 ;Auxiliary value 4 - open for reading
           sta CIO1_AUX1
           
           lda #12                ;And also simulate key press
@@ -281,7 +277,8 @@ FOPEN     ldx #16                ;IOCB 1
           lda #>CDEV
           sta CIO1_BUFHI
           
-          jmp CIOV               ;Call CIO and return
+          lda #3                 ;Requesting CIO OPEN operation with code 3
+          bne CIO_OP1            ;Call CIO in channel 1
 
 ;===============================================================================
 ; Loader startup
