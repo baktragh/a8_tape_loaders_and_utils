@@ -53,7 +53,7 @@
 BOOTHEAD  .BYTE 0                 ;Boot flag 0
           .BYTE 3                 ;3 blocks + 1 EOF blocks
           .WORD [LDR_START]       ;Load address
-          .WORD FAKEINIT          ;Initialization address - just RTS
+          .WORD DO_RTS            ;Initialization address - just RTS
 ;-------------------------------------------------------------------------------
 ; Boot continuation code
 ;-------------------------------------------------------------------------------          
@@ -118,9 +118,8 @@ BLFCLOS   jsr FCLOSE              ;Close channel #1
 ;===============================================================================
 ; Read a segment 
 ;===============================================================================
-GETSEG    lda #<FAKEINIT          ;Set fake INIT vector to RTS
+GETSEG    lda #255                ;Set fake INIT vector to $FFFF (fake value)
           sta INITAD
-          lda #>FAKEINIT
           sta INITAD+1
 
 ;-------------------------------------------------------------------------------
@@ -211,11 +210,9 @@ GS_GETD   lda BLSEGHEAD
 ; Perform jump through INITAD if needed
 ;-------------------------------------------------------------------------------          
           lda INITAD             ;Check if there was real INIT segment
-          cmp #<FAKEINIT
-          bne REALINI
-          lda INITAD+1
-          cmp #>FAKEINIT
-          beq POSTINI
+          and INITAD+1
+          cmp #255
+          beq POSTINI            ;Skip INIT if $FFFF
           
 REALINI   lda #60                ;Switch off the motor
           sta PACTL 
@@ -253,7 +250,6 @@ GETBLK    ldx #16                   ;Channel 1
 ;Emulation of JSR(738)
 ;===============================================================================
 DOINIT    jmp (INITAD)
-FAKEINIT  rts
 ;===============================================================================
 ;Main data area
 ;===============================================================================
@@ -307,7 +303,7 @@ DINI      lda #<BLTOP             ;DOSINI sets DOSVEC
           sta DOSVEC
           lda #>BLTOP
           sta DOSVEC+1
-          rts
+DO_RTS    rts
 
 ;-------------------------------------------------------------------------------
 ; Program title and configuration bytes
