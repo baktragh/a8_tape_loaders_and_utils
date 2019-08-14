@@ -17,6 +17,8 @@
 ;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file. 
 
 ;2019-07-18 Initial version
+;2019-08-12 Shortening based on suggestions of AtariAge forum members
+;           dmsc,xxl,phaeron
 ;===============================================================================
 
           .INCLUDE "equates.asm"
@@ -63,10 +65,10 @@ BOOTHEAD  .BYTE 0                 ;Boot flag 0
           txs
 ;-------------------------------------------------------------------------------
 ; Move last portion of the loader code from cassette buffer
+; Move 128 bytes of the EOF block from cassette
+; buffer to the intended place.
+; X = 255 from above, loop down to 128.
 ;-------------------------------------------------------------------------------
-                                  ;Move 128 bytes of the EOF block from cassette
-                                  ;buffer to the intended place.
-                                  ;X = 255 from above, loop down to 128.
 RELO_P2_L lda  [1024-128],X
           sta  [LDR_START+384-128],X
           dex  
@@ -75,11 +77,10 @@ RELO_P2_L lda  [1024-128],X
 ;-------------------------------------------------------------------------------
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
-BL000
 BLTOP     jsr  SCREEN             ;Establish this loader as "DOS", setups screen
 
-                                  ;Reset flag indicating 255 255 header found
-          stx BL_HDR_FOUND                          
+          lda #0                  ;Reset flag indicating 255 255 header found
+          sta BL_HDR_FOUND                                  
           
           lda CONSOL              ;Check for SELECT key
           cmp #5
@@ -87,52 +88,33 @@ BLTOP     jsr  SCREEN             ;Establish this loader as "DOS", setups screen
           jmp COLDSV              ;Otherwise perform cold start
           
 BLFCLOS   jsr FCLOSE              ;Close channel #1 
-                                  ;Open C: file
-FOPEN     lda #4                 ;Auxiliary value 4 - open for reading
-          sta CIO1_AUX1
+          jsr FOPEN               ;Open C: file
           
-          lda #12                ;And also simulate key press
-          sta CH                 
-                       
-          lda #128               ;Auxiliary value 128 - short IRGs
-          sta CIO1_AUX2
-          lda #<CDEV             ;Buffer- DEVICE:FILENAME ("C:")
-          sta CIO1_BUFLO
-          lda #>CDEV
-          sta CIO1_BUFHI
-          
-          lda #3                 ;Requesting CIO OPEN operation with code 3
-          jsr CIO_OP1            ;Call CIO in channel 1
-
-          bmi ERRHNDL             ;If error occured, handle it
-
+LOADER_CORE_BEGIN
 ;===============================================================================
 ; Read a segment 
 ;===============================================================================
 GETSEG    lda #255                ;Set fake INIT vector to $FFFF (fake value)
           sta INITAD
           sta INITAD+1
-
 ;-------------------------------------------------------------------------------
 ; Get segment header
 ;-------------------------------------------------------------------------------
-GS_STRTA  ;Read the first two bytes of segment header
-          ldy #<BLSEGHEAD
-          lda #>BLSEGHEAD
+GS_STRTA  ldy #<BL_SEG_HEAD     ;Read the first two bytes of segment header
+          lda #>BL_SEG_HEAD
           jsr GETBLK_2
            
-          lda BLSEGHEAD           ;Check for 255 255
-          and BLSEGHEAD+1
+          lda BL_SEG_HEAD       ;Check for 255 255
+          and BL_SEG_HEAD+1
           cmp #255
           bne GS_ENDA             ;If 255 255 not found, continue
           
           sta BL_HDR_FOUND        ;Indicate header was found
           beq GS_STRTA            ;And then start over
           
-          
 GS_ENDA   ;Get rest of the segment header
-          ldy #<[BLSEGHEAD+2]
-          lda #>[BLSEGHEAD+2]
+          ldy #<[BL_SEG_HEAD+2]
+          lda #>[BL_SEG_HEAD+2]
           jsr GETBLK_2
           
 ;-------------------------------------------------------------------------------
@@ -140,41 +122,17 @@ GS_ENDA   ;Get rest of the segment header
 ;-------------------------------------------------------------------------------
           lda BL_HDR_FOUND       ;Check if 255 255 header was found
           bne GS_CALCLN          ;It was, we can continue
-                                 ;If not, this is not a binary load file
-;===============================================================================
-;Error handling
-;===============================================================================
-ERRNOBIN lda #$0E                ;Not a binary file - white background
-         bne ERRSIG
-
-ERRHNDL  lda #$24                ;I/O error - red background
-
-ERRSIG   sta COLOR4              ;Signalize error by changing background
-         sta COLOR2
-         sta COLBK
-         sta COLPF2
-         lda #60                 ;Switch off the motor
-         sta PACTL  
-         
-         lda #255                ;Wait for any key
-         sta CH
-WFORKEYL cmp CH
-         beq WFORKEYL
-         
-ERRREST  jmp WARMSV              ;Perform warm reset 
-         
-
+          jmp ERRNOBIN           ;If not, this is not a binary load file
 ;-------------------------------------------------------------------------------
 ; Calculate length of the segment           
 ;-------------------------------------------------------------------------------          
 GS_CALCLN sec                    ;Subtract start address from end address
-          lda BLSEGHEAD+2        
-          sbc BLSEGHEAD+0
+          lda BL_SEG_HEAD+2        
+          sbc BL_SEG_HEAD+0
           sta CIO1_LENLO
-          lda BLSEGHEAD+3
-          sbc BLSEGHEAD+1
+          lda BL_SEG_HEAD+3
+          sbc BL_SEG_HEAD+1
           sta CIO1_LENHI
-          
                                  ;Increase the difference by 1 to get length
           inc CIO1_LENLO
           bne GS_GETD
@@ -182,8 +140,8 @@ GS_CALCLN sec                    ;Subtract start address from end address
 ;-------------------------------------------------------------------------------          
 ; Read segment data to its location in the memory          
 ;-------------------------------------------------------------------------------          
-GS_GETD   ldy BLSEGHEAD
-          lda BLSEGHEAD+1
+GS_GETD   ldy BL_SEG_HEAD
+          lda BL_SEG_HEAD+1
           jsr GETBLK
 ;-------------------------------------------------------------------------------
 ; Perform jump through INITAD if needed
@@ -211,9 +169,6 @@ GBERR     cpy #136                  ;Is this EOF ?
           jsr FCLOSE                ;Close file
           
           jmp (RUNAD)               ;Run the program
-        
- 
-
 ;===============================================================================
 ;Calls GETBLK with a length of 2 bytes.
 ;===============================================================================
@@ -233,7 +188,6 @@ GETBLK    sta CIO1_BUFHI
                                     ;Check for error
           bmi GBERR                 ;Error occured - handle it
           rts
-          
 ;===============================================================================
 ;Emulation of JSR(738)
 ;===============================================================================
@@ -242,6 +196,8 @@ DOINIT    jmp (INITAD)
 ;Main data area
 ;===============================================================================
 CDEV         .BYTE "C:",155       ;File name
+BL_SEG_HEAD  .BYTE 0,0,0,0        ;Segment header
+BL_HDR_FOUND .BYTE 0              ;Binary file header flag
 ;===============================================================================
 ;Subroutine that closes file
 ;===============================================================================
@@ -251,8 +207,55 @@ CIO_OP1   ldx #16         ;Calls CIO one channel 1 and operation in A
           sta CIO1_OP    
           jmp CIOV        ;Call CIO and return
 
+LOADER_CORE_END
+
+;======================================================================
+; Subroutine that opens file
+;======================================================================
+FOPEN     lda #4                  ;Auxiliary value 4 - open for reading
+          sta CIO1_AUX1
+          
+          lda #12                ;And also simulate key press
+          sta CH                 
+                       
+          lda #128               ;Auxiliary value 128 - short IRGs
+          sta CIO1_AUX2
+          lda #<CDEV             ;Buffer- DEVICE:FILENAME ("C:")
+          sta CIO1_BUFLO
+          lda #>CDEV
+          sta CIO1_BUFHI
+          
+          lda #3                 ;Requesting CIO OPEN operation with code 3
+          jsr CIO_OP1            ;Call CIO in channel 1
+
+          bmi ERRHNDL            ;If error occured, handle it
+          rts
 ;===============================================================================
-; Loader Screen
+; Error handling
+; Note: No need to preserve stack consistency, error handling 
+;       always results in warm start
+;===============================================================================
+ERRNOBIN lda #$0E                ;Not a binary file - white background
+         bne ERRSIG
+
+ERRHNDL  lda #$24                ;I/O error - red background
+
+ERRSIG   sta COLOR4              ;Signalize error by changing background
+         sta COLOR2
+         sta COLBK
+         sta COLPF2
+         lda #60                 ;Switch off the motor
+         sta PACTL  
+         
+         lda #255                ;Wait for any key
+         sta CH
+WFORKEYL cmp CH
+         beq WFORKEYL
+         
+ERRREST  jmp WARMSV              ;Perform warm reset 
+
+;===============================================================================
+; Loader Screen and startup sequence
 ;===============================================================================
 SCREEN    lda CONFIG_BG           ;Set background
           sta COLOR2
@@ -274,10 +277,9 @@ SCREEN    lda CONFIG_BG           ;Set background
           ldx #0                  ;Channel 0
           stx CIO0_LENHI
           jsr CIOV                ;Call CIO
-          ;Fall through to STARTUP
-;===============================================================================
-; Loader startup
-;===============================================================================
+;-------------------------------------------------------------------------------
+; Loader startup  - establish ourselves as DOS
+;-------------------------------------------------------------------------------
 STARTUP   ldx #0                  ;Reset cold start flag
           stx COLDST
           inx                     ;Indicate disk boot succeded
@@ -295,10 +297,10 @@ DINI      lda #<BLTOP             ;DOSINI sets DOSVEC
           sta DOSVEC+1
 DO_RTS    rts
 
-;-------------------------------------------------------------------------------
+;===============================================================================
 ; Program title and configuration bytes
 ; Defaults: 148,202,1,0
-;-------------------------------------------------------------------------------
+;===============================================================================
 CONFIG_EYE      .BYTE "@CBL"          ;Eye-catcher
 CONFIG_TITLE    .BYTE 125             ;Clear screen
 CONFIG_NAME     .BYTE "TSCBL                             "
@@ -309,15 +311,9 @@ CONFIG_SNDR     .BYTE 1               ;SOUNDR value
 CONFIG_CRSR     .BYTE 0               ;Cursor on-off
 
 ;===============================================================================
-; Uninitialized data here - use first bytes before main loader
-;===============================================================================
-BL_HDR_FOUND = BLTOP - 5          ;Binary file header flag (255 255) (1 byte)
-BLSEGHEAD    = BLTOP - 4          ;Segment header and position pointer (4 bytes)
-
-;===============================================================================
 ; RUN segment
 ;===============================================================================
 .IF LDRTYPE=1
           *=RUNAD
-          .BYTE <BL000,>BL000
+          .BYTE <BLTOP,>BLTOP
 .ENDIF
