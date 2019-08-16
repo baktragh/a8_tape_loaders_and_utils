@@ -1,5 +1,5 @@
 TSCBL - TURGEN SYSTEM CASSETTE BINARY LOADER
-Version 1.0
+Version 1.1
 ================================================================================
 
 Overview
@@ -56,4 +56,6 @@ Inter-Record-Gaps
 -----------------
 TSCBL expects short inter-record-gaps (250 ms) between blocks,
 except gaps after blocks that hold INIT vectors. As the motor is switched off
-after blocks that hold INIT vectors, gaps of at least 1200 ms are needed. 
+after blocks that hold INIT vectors, gaps of at least 1200 ms are needed.
+This must be guaranteed by a utility that converts the binary load file
+to standard tape records.

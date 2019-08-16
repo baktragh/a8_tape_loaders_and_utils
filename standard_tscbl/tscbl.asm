@@ -5,20 +5,22 @@
 ;The author has placed this work in the Public Domain, thereby relinquishing all
 ;copyrights. Everyone is free to use, modify, republish, sell or give away this
 ;work without prior consent from anybody.
-
-;This loader uses the "trailing EOF record trick" - Last 128 bytes of the
+;
+;This loader uses the "trailing EOF record trick" - the last 128 bytes of the
 ;loader are in the EOF block. These 128 bytes are moved from the cassette
 ;buffer to the intended memory location. The trick allows this loader to be
 ;only 4 records long
-
-;The loader is ROM OS agnostic
-
+;
+;The loader is compatible with XL/XE and pre-XL/XE Atari computers
+;
 ;Using the LDRTYPE symbol, this loader can be assembled 
 ;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file. 
-
-;2019-07-18 Initial version
-;2019-08-12 Shortening based on suggestions of AtariAge forum members
-;           dmsc,xxl,phaeron
+;
+;Assemble with the ATASM cross-assembler
+;
+;2019-07-18 Initial version 1.0
+;2019-08-12 Shortening based  and updates based on suggestions of
+;AtariAge forum members dmsc,xxl,phaeron. Version 1.1
 ;===============================================================================
 
           .INCLUDE "equates.asm"
@@ -77,15 +79,17 @@ RELO_P2_L lda  [1024-128],X
 ;-------------------------------------------------------------------------------
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
-BLTOP     jsr  SCREEN             ;Establish this loader as "DOS", setups screen
+BLTOP     jsr  SCREEN             ;Establish this loader as "DOS", setup screen
 
-          lda #0                  ;Reset flag indicating 255 255 header found
-          sta BL_HDR_FOUND                                  
+          ldx #0                  ;Reset flag indicating 255 255 header found
+          stx BL_HDR_FOUND                                  
           
-          lda CONSOL              ;Check for SELECT key
+          lda CONSOL              ;Check for the SELECT key
           cmp #5
           bne BLFCLOS             ;If not pressed, continue
-          jmp COLDSV              ;Otherwise perform cold start
+          
+REBOOT    stx NMIEN               ;Kill NMIs
+          jmp COLDSV              ;Perform cold start
           
 BLFCLOS   jsr FCLOSE              ;Close channel #1 
           jsr FOPEN               ;Open C: file
@@ -94,7 +98,7 @@ LOADER_CORE_BEGIN
 ;===============================================================================
 ; Read a segment 
 ;===============================================================================
-GETSEG    lda #255                ;Set fake INIT vector to $FFFF (fake value)
+GETSEG    lda #255                 ;Set fake INIT vector to $FFFF (fake value)
           sta INITAD
           sta INITAD+1
 ;-------------------------------------------------------------------------------
@@ -303,13 +307,12 @@ DO_RTS    rts
 ;===============================================================================
 CONFIG_EYE      .BYTE "@CBL"          ;Eye-catcher
 CONFIG_TITLE    .BYTE 125             ;Clear screen
-CONFIG_NAME     .BYTE "TSCBL                             "
+CONFIG_NAME     .BYTE "TSCBL                             " ;34 chars
 CONFIG_NAME_EOL .BYTE 155             ;End of line
 CONFIG_BG       .BYTE 148             ;Background color             
 CONFIG_FG       .BYTE 202             ;Foreground color                  
 CONFIG_SNDR     .BYTE 1               ;SOUNDR value                  
 CONFIG_CRSR     .BYTE 0               ;Cursor on-off
-
 ;===============================================================================
 ; RUN segment
 ;===============================================================================
