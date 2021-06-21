@@ -277,14 +277,16 @@ L0861       lda #255
             sta PORTB               ;Re-enable OS-ROM
             jsr L07FA               ;Terminate decodning
             
-            lda #$24                ;I/O error - red background
-            sta COLOR4              ;Signalize error by changing background
+            lda #$24                ;I/O error - red background and border
+            sta COLOR4              
             sta COLOR2
             sta COLBK
             sta COLPF2
             
-            sta CH                  ;Wait for any key                  
-WFORKEYL    cmp CH
+            lda #255                ;Reset keys
+            sta CH                  
+            
+WFORKEYL    cmp CH                  ;Wait for any key
             beq WFORKEYL
          
 ERRREST     jmp WARMSV              ;Perform warm reset
