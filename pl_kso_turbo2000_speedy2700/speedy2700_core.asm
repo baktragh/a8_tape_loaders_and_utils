@@ -1,7 +1,7 @@
 ;===============================================================================
 ; KSO Turbo 2000 - Speedy 2700 binary loader
 ; Unprotected, simplified version, signal source is automatically detected
-; Assemble with the ATASM cross-assembler
+; Assemble with the MADS cross-assembler
 ;
 ; File format:
 
@@ -14,8 +14,12 @@
 ;                        modulo 256
 ;  5. If the segment changes INITAD, then block ends. Goto 1
 ;  6. Goto 2a
+;
+;  Assembler output
+;  LDRTYPE = 1 Binary load file
+;  LDRTYPE = 2 Cassette boot file
 ;===============================================================================
-            .INCLUDE equates.asm
+            ICL 'equates.asm'
 
 ;-------------------------------------------------------------------------------            
 ;Code equates
@@ -38,8 +42,36 @@ L0768       = $0768
 
 ;===============================================================================
 ; Mainline code
-;===============================================================================            
-            *= $0700
+;===============================================================================
+            OPT H-
+.IF LDRTYPE=2
+;-------------------------------------------------------------------------------
+; Cassette boot file prologue
+;-------------------------------------------------------------------------------
+            ORG ($0700-$06-$03)               ;Boot header before the loader
+; 
+            LDR_SIZE = (LDR_END-BOOTHEAD)     ;Count number of blocks
+            BLK_NUM = (LDR_SIZE / 128)
+            BLK_BYTES = (BLK_NUM * 128)
+            .IF BLK_BYTES<LDR_SIZE
+            BLK_FNUM = (BLK_NUM + 1)
+            .ELSE
+            BLK_FNUM = (BLK_NUM)
+            .ENDIF
+            
+BOOTHEAD    .BYTE $00                         ;Boot flag
+            .BYTE BLK_FNUM                    ;Number of blocks
+            .BYTE <BOOTHEAD,>BOOTHEAD         ;Load address
+            .BYTE <JUSTRTS,>JUSTRTS           ;Init address (nothing)
+            
+            JMP L0813                         ;Jump to entry
+.ELSE
+;-------------------------------------------------------------------------------
+; Binary load file prologue
+;-------------------------------------------------------------------------------
+
+            ORG $0700
+.ENDIF
 
 L0700      jsr L07DC
 
@@ -64,7 +96,7 @@ L0711       inx
             bcc L0703
             iny
             bne L0705
-            rts
+JUSTRTS     rts
 ;-------------------------------------------------------------------------------
 ; Decode 1 byte and store to the STATUS register
 ; This routine can be zapped to use PORTA and different bit mask when the
@@ -290,3 +322,5 @@ WFORKEYL    cmp CH                  ;Wait for any key
             beq WFORKEYL
          
 ERRREST     jmp WARMSV              ;Perform warm reset
+;-------------------------------------------------------------------------------
+LDR_END     
