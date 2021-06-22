@@ -48,7 +48,7 @@ L0768       = $0768
 ;-------------------------------------------------------------------------------
 ; Cassette boot file prologue
 ;-------------------------------------------------------------------------------
-            ORG ($0700-$06-$03)               ;Boot header before the loader
+            ORG ($0700-(BOOT_END-BOOTHEAD))               ;Boot header before the loader
 ; 
             LDR_SIZE = (LDR_END-BOOTHEAD)     ;Count number of blocks
             BLK_NUM = (LDR_SIZE / 128)
@@ -64,7 +64,17 @@ BOOTHEAD    .BYTE $00                         ;Boot flag
             .BYTE <BOOTHEAD,>BOOTHEAD         ;Load address
             .BYTE <JUSTRTS,>JUSTRTS           ;Init address (nothing)
             
+            lda #<L0813                       ;Set CASINI
+            sta CASINI
+            lda #>L0813
+            sta CASINI+1
+            lda #2                            ;Set boot flag
+            sta BOOT
+            lda #0
+            sta COLDST                        ;Warm reset - restart loader
+            
             JMP L0813                         ;Jump to entry
+BOOT_END
 .ELSE
 ;-------------------------------------------------------------------------------
 ; Binary load file prologue
