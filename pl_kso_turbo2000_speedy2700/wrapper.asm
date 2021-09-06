@@ -9,7 +9,7 @@
             BUFRHI=51
             BFENLO=52
             BFENHI=53
-            LOADERENTRY=$0813
+            LOADERENTRY=$0700
             LOADERSTART=$0700
             COLDST=$0244
             BOOT=$0009

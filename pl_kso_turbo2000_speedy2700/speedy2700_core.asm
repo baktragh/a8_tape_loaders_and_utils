@@ -1,7 +1,10 @@
 ;===============================================================================
 ; KSO Turbo 2000 - Speedy 2700 binary loader
-; Unprotected, simplified version, signal source is automatically detected
+; Unprotected, simplified version
+; Improved signal source detection
+;
 ; Assemble with the MADS cross-assembler
+; A portion of the source code is self-modifying, program cannot reside in ROM 
 ;
 ; File format:
 
@@ -21,25 +24,11 @@
 ;===============================================================================
             ICL 'equates.asm'
 
-;-------------------------------------------------------------------------------            
-;Code equates
 ;-------------------------------------------------------------------------------
-L00D0       = $00D0
-L00D1       = $00D1
-L0706       = $0706
-L0708       = $0708
-L0709       = $0709
-L0715       = $0715
-L0716       = $0716
-L072C       = $072C
-L072E       = $072E
-L072F       = $072F
-L0739       = $0739
-L073A       = $073A
-L0768       = $0768
-
-             
-
+; Private EQUs
+;-------------------------------------------------------------------------------
+            ZP_PTR_LO   = $D0
+            ZP_PTR_HI   = $D1 
 ;===============================================================================
 ; Mainline code
 ;===============================================================================
@@ -64,16 +53,16 @@ BOOTHEAD    .BYTE $00                         ;Boot flag
             .BYTE <BOOTHEAD,>BOOTHEAD         ;Load address
             .BYTE <JUSTRTS,>JUSTRTS           ;Init address (nothing)
             
-            lda #<L0813                       ;Set CASINI
+            lda #<ENTRY_POINT                 ;Set CASINI
             sta CASINI
-            lda #>L0813
+            lda #>ENTRY_POINT
             sta CASINI+1
             lda #2                            ;Set boot flag
             sta BOOT
             lda #0
             sta COLDST                        ;Warm reset - restart loader
             
-            JMP L0813                         ;Jump to entry
+            JMP ENTRY_POINT                   ;Jump to entry
 BOOT_END
 .ELSE
 ;-------------------------------------------------------------------------------
@@ -83,83 +72,97 @@ BOOT_END
             ORG $0700
 .ENDIF
 
-L0700      jsr L07DC
+ENTRY_POINT    ldx #$FF                      ;Reset stack
+               txs
+               jsr LDR_SETUP
+;-------------------------------------------------------------------------------
+; Loader
+;-------------------------------------------------------------------------------               
+BEGIN_LOADING  jsr DEC_INIT
+               jmp BL_BEGIN
 
 ;-------------------------------------------------------------------------------
 ; Wait for pilot pulse
 ; This routine can be zapped to use PORTA and different bit mask when the
-; signal goes from the joystick port.
+; signal goes from the joystick port. If there is no edge for some time,
+; the source of the signal is switched.
 ;-------------------------------------------------------------------------------
-L0703       ldy #$00
-L0705       lda #$10
-L0707       bit SKSTAT
-            bne L0707
-            ldx #$00
-            stx COLBK
-L0711       inx
-            bmi L0703
-            bit SKSTAT
-            beq L0711
-            lda #$08
-            sta COLBK
-            cpx #$36
-            bcc L0703
-            iny
-            bne L0705
-JUSTRTS     rts
+DPILOT_BEGIN   ldy #$00                       ;Reset pilot tone counter
+               jsr SWITCH_SIGNAL_SOURCE       ;Switch signal source
+               
+DPILOT_0       ldx #$00                       ;Reset mini counter
+DPILOT_1       inx                            ;Increment mini counter                             
+               beq DPILOT_BEGIN               ;Timout, start over
+               
+L_MASK_A       lda #$10                       ;Get mask for 1                     
+L_BIT_A        bit SKSTAT                     ;Compare with signal
+               bne DPILOT_1                   ;If 1, then loop
+               
+               ldx #$00                       ;Reset mini counter
+               stx COLBK                      ;Blank background
+DPILOT_MID     inx                            ;Increment mini counter
+               bmi DPILOT_BEGIN               ;Timeout, start over
+L_BIT_B        bit SKSTAT                     ;Compare with signal
+               beq DPILOT_MID                 ;If 0, then loop
+               lda #$08                       ;Background = gray
+               sta COLBK
+               cpx #$36                       ;Check duration of the pulse
+               bcc DPILOT_BEGIN               ;Too long, start over
+               iny                            ;Inc pilot tone counter
+               bne DPILOT_0                   ;Less than 256, keep in pilot
+JUSTRTS        rts
 ;-------------------------------------------------------------------------------
 ; Decode 1 byte and store to the STATUS register
 ; This routine can be zapped to use PORTA and different bit mask when the
 ; signal goes from the joystick port.
 ;-------------------------------------------------------------------------------            
-L0726       ldy #$08                 ; Bit counter = 8
-L0728       ldx RANDOM               ; For background color
-L072B       lda #$10                 ; Bit mask
-L072D       bit SKSTAT               ; Check input signal for HI->LO
-            bne L072D                ; If HI, keep checking
+DBYT_BEGIN  ldy #$08                 ; Bit counter = 8
+DBYT_PULS   ldx RANDOM               ; For background color
+L_MASK_C    lda #$10                 ; Bit mask
+L_BIT_C     bit SKSTAT               ; Check input signal for HI->LO
+            bne L_BIT_C              ; If HI, keep checking
             stx COLBK                ; Set background color
             
             ldx #$00                 ; Reset timing counter
             
-L0737       inx                      ; Tick
-            bit SKSTAT               ; Check input signal for LO->HI
-            beq L0737
+DBYT_PUMID  inx                      ; Tick
+L_BIT_D     bit SKSTAT               ; Check input signal for LO->HI
+            beq DBYT_PUMID
             
             lda #$08                 ; Background color
             sta COLBK
             cpx #$36                 ; Check counter
-            bcs L074E                ; Check if pilot signal, if so, mark it
+            bcs DBYT_PILOT                ; Check if pilot signal, if so, mark it
             cpx #$20                 ; Determine one or zero
             rol STATUS
             dey                      ; Decrement bit counter
-            bne L0728                ; If not whole byte, next bit
+            bne DBYT_PULS                ; If not whole byte, next bit
             rts                      ; Return
             
-L074E       ldx #$45                 ; Mark pilot signal color
-            bne L072B                ; Continue decoding
+DBYT_PILOT  ldx #$45                 ; Mark pilot signal color
+            bne L_MASK_C             ; Continue decoding
 
 ;-------------------------------------------------------------------------------
 ; Decoding binary file data
 ;-------------------------------------------------------------------------------            
-L0752       jsr L0703                    ;Wait for pilot pulse
+BL_BEGIN    jsr DPILOT_BEGIN         ;Wait for pilot pulse
 
 ;-------------------------------------------------------------------------------
 ; Read segment header to FMSZPG+3,4 and FMSZPG+5,6
 ;-------------------------------------------------------------------------------
-L0755       lda #$46
-            sta L0768
+BL_SH_1     lda #$46
+            sta BL_STORB+1
             
             lda #$00                     ;Prepare to read 4 bytes
             sta FMSZPG+4
             lda #$04
             sta BUFRFL
             
-L0762       jsr L0726                    ;Decode 1 byte
+BL_SH_2     jsr DBYT_BEGIN               ;Decode 1 byte
             lda STATUS
             
-            sta ZCHAIN                   ;Store to desired location. This is
+BL_STORB    sta ZCHAIN                   ;Store to desired location. This is
                                          ;zapped
-            
             clc                          ;Update checksum
             adc CHKSUM
             sta CHKSUM
@@ -167,20 +170,20 @@ L0762       jsr L0726                    ;Decode 1 byte
             lda FMSZPG+3                 ;Check for $FF $FF - EOF
             and FMSZPG+4
             cmp #$FF
-            bcs L07D1                    ;EOF occured, go run the program
+            bcs BL_RUNIT                 ;EOF occured, go run the program
             
-            inc L0768                    ;Increment desired location                     
+            inc BL_STORB+1               ;Increment desired location                     
             dec BUFRFL                   ;Decrement 'bytes to read' counter
-            bne L0762                    ;If more bytes to read, continue
+            bne BL_SH_2                  ;If more bytes to read, continue
             
             inc FMSZPG+5                 ;Increment by one
-            bne L0783
+            bne BL_SD_1
             inc FMSZPG+6
 ;-------------------------------------------------------------------------------
 ; Read segment data and place to
 ; FMSZPG+3,4 to (FMSZPG+3,4)-1
 ;-------------------------------------------------------------------------------            
-L0783       jsr L0726                    ;Decode segment byte
+BL_SD_1     jsr DBYT_BEGIN                    ;Decode segment byte
             ldy #$00
             lda STATUS
             sta (FMSZPG+3),Y             ;Store to the desried location
@@ -189,47 +192,47 @@ L0783       jsr L0726                    ;Decode segment byte
             sta CHKSUM
             
             inc FMSZPG+3                 ;Increment desired location
-            bne L0797
+            bne BL_SD_2
             inc FMSZPG+4
             
-L0797       lda FMSZPG+3                 ;Check if segment fully read
+BL_SD_2     lda FMSZPG+3                 ;Check if segment fully read
             cmp FMSZPG+5
-            bne L0783
+            bne BL_SD_1
             lda FMSZPG+4
             cmp FMSZPG+6
-            bne L0783                    ;If not, continue with segment bytes
+            bne BL_SD_1                  ;If not, continue with segment bytes
             
             
-            jsr L0726                    ;Get another byte - checksum
+            jsr DBYT_BEGIN               ;Get another byte - checksum
             lda STATUS
             cmp CHKSUM                   ;Verify checksum
-            bne L07CB                    ;If no match, then load error
+            bne BL_NOPILOT                    ;If no match, then load error
             
             lda #$00                     ;Reset checksum
             sta CHKSUM
             
             lda INITAD                   ;Check for INITAD change
             ora INITAD+1
-            beq L0755                    ;If no change, continue with next seg.
+            beq BL_SH_1                  ;If no change, continue with next seg.
             
-            jsr L07FA                    ;Terminate decoding
-            jsr L07CE                    ;Execute INIT segment
+            jsr DEC_TERM                    ;Terminate decoding
+            jsr BL_DOINIT                ;Execute INIT segment
             
             lda #$00                     ;Reset the INITAD
             sta INITAD
             sta INITAD+1
-            jsr L0700                    ;Restart decoding and wait for pilot
+            jsr BEGIN_LOADING            ;Restart decoding and wait for pilot
             
-            beq L0755                    ;If pilot, go decode next segment
-L07CB       jmp L0861                    ;No pilot - load error
-L07CE       jmp (INITAD)
+            beq BL_SH_1                  ;If pilot, go decode next segment
+BL_NOPILOT  jmp LD_ERROR                    ;No pilot - load error
+BL_DOINIT   jmp (INITAD)
 
 ;-------------------------------------------------------------------------------
 ; Run the loaded program
 ;-------------------------------------------------------------------------------
-L07D1       lda #$25
+BL_RUNIT    lda #$25
             sta PUPBT3
-            jsr L07FA                  ;Terminate decoding
+            jsr DEC_TERM                  ;Terminate decoding
             jmp (RUNAD)                ;Run the loaded program
             
 ;-------------------------------------------------------------------------------
@@ -239,7 +242,7 @@ L07D1       lda #$25
 ; - Enable COMMAND signal - for input from DATA IN
 ; - Motor ON
 ;-------------------------------------------------------------------------------            
-L07DC       sei
+DEC_INIT    sei
             lda #$00
             sta NMIEN
             sta DMACLT
@@ -259,7 +262,7 @@ L07DC       sei
 ; - Motor OFF
 ; - Re-enable interrupts
 ;-------------------------------------------------------------------------------            
-L07FA       lda #$38
+DEC_TERM    lda #$38
             sta PACTL
             lda #$00
             sta PORTA
@@ -271,53 +274,73 @@ L07FA       lda #$38
             cli
             rts
 ;-------------------------------------------------------------------------------
-; Entry point
+; Loader setup
 ;-------------------------------------------------------------------------------            
-L0813       ldx #$FF                      ;Reset stack
-            txs
-            inx
+LDR_SETUP   ldx #0
             stx INITAD                    ;Clear INITAD
             stx INITAD+1
             
-            stx L00D0                     ;Zero memory from $000A to $BBFF 
+            stx ZP_PTR_LO                 ;Zero memory from $0A00 to $BBFF 
             lda #$0A
-            sta L00D1
+            sta ZP_PTR_HI
             txa
             tay
-L0825       sta (L00D0),Y
+L_MEMCLR    sta (ZP_PTR_LO),Y
             iny
-            bne L0825
-            inc L00D1
-            ldx L00D1
+            bne L_MEMCLR
+            inc ZP_PTR_HI
+            ldx ZP_PTR_HI
             cpx #$BC
-            bne L0825
+            bne L_MEMCLR
+            rts
+
+;-------------------------------------------------------------------------------
+; Switch signal source SIO->JS or JS->SIO
+;-------------------------------------------------------------------------------
+SWITCH_SIGNAL_SOURCE
+           pha
+           lda L_MASK_A+1              ;Check current bit mask
+           cmp #128                    ;Is that of joystick port?
+           beq SW_TO_SIO               ;Yes, then switch to SIO
             
-            jsr L07DC                     ;Prepare for decoding
-            lda PORTA                     ;Check signal at joystick port
-            bpl L085E                     ;If no signal, then skip
+SW_TO_JS   lda #<PORTA                 ;Push PORTA low byte
+           pha
+           lda #>PORTA                 ;Push PORTA high byte
+           pha
+           lda #128                    ;Push Bit Mask
+           pha
+           jmp SW_ZAP
             
-            lda #$0F                      ;Modify the decoding routine so
-            sta L0708                     ;it reads from the joystick port
-            sta L0715
-            sta L072E
-            sta L0739
-            lda #$D2
-            sta L0709
-            sta L0716
-            sta L072F
-            sta L073A
-            lda #$10
-            sta L0706
-            sta L072C
-            
-L085E       jmp L0752                    ;Go to data decoding
+SW_TO_SIO  lda #<SKSTAT
+           pha
+           lda #>SKSTAT                ;Push SKSTAT high byte
+           pha
+           lda #$10                    ;Push Bit Mask
+           pha
+
+SW_ZAP     pla                         ;Get bit mask
+           sta L_MASK_A+1              ;Zap instructions
+           sta L_MASK_C+1
+           pla                         ;Get PORTA/SKSTAT high byte
+           sta L_BIT_A+2               ;Zap instructions
+           sta L_BIT_B+2
+           sta L_BIT_C+2
+           sta L_BIT_D+2 
+           pla                         ;Get PORTA/SKSTAT low byte
+           sta L_BIT_A+1               ;Zap instructions
+           sta L_BIT_B+1
+           sta L_BIT_C+1
+           sta L_BIT_D+1 
+;
+           pla 
+           rts                       
 
 ;-------------------------------------------------------------------------------
 ;Load Error handling
 ;------------------------------------------------------------------------------
-L0861       lda #255                
+LD_ERROR    lda #255                
             sta PORTB               ;Re-enable OS-ROM
-            jsr L07FA               ;Terminate decodning
+            jsr DEC_TERM            ;Terminate decodning
             
             lda #$24                ;I/O error - red background and border
             sta COLOR4              
