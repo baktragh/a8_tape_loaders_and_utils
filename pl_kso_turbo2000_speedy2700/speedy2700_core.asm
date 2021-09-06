@@ -1,7 +1,7 @@
 ;===============================================================================
 ; KSO Turbo 2000 - Speedy 2700 binary loader
-; Unprotected, simplified version
-; Improved signal source detection
+; - Unprotected, simplified version
+; - Improved signal source detection
 ;
 ; Assemble with the MADS cross-assembler
 ; A portion of the source code is self-modifying, program cannot reside in ROM 
@@ -37,7 +37,7 @@
 ;-------------------------------------------------------------------------------
 ; Cassette boot file prologue
 ;-------------------------------------------------------------------------------
-            ORG ($0700-(BOOT_END-BOOTHEAD))               ;Boot header before the loader
+            ORG ($0700-(BOOT_END-BOOTHEAD))   ;Boot header before the loader
 ; 
             LDR_SIZE = (LDR_END-BOOTHEAD)     ;Count number of blocks
             BLK_NUM = (LDR_SIZE / 128)
@@ -132,11 +132,11 @@ L_BIT_D     bit SKSTAT               ; Check input signal for LO->HI
             lda #$08                 ; Background color
             sta COLBK
             cpx #$36                 ; Check counter
-            bcs DBYT_PILOT                ; Check if pilot signal, if so, mark it
+            bcs DBYT_PILOT           ; Check if pilot signal, if so, mark it
             cpx #$20                 ; Determine one or zero
             rol STATUS
             dey                      ; Decrement bit counter
-            bne DBYT_PULS                ; If not whole byte, next bit
+            bne DBYT_PULS            ; If not whole byte, next bit
             rts                      ; Return
             
 DBYT_PILOT  ldx #$45                 ; Mark pilot signal color
@@ -183,7 +183,7 @@ BL_STORB    sta ZCHAIN                   ;Store to desired location. This is
 ; Read segment data and place to
 ; FMSZPG+3,4 to (FMSZPG+3,4)-1
 ;-------------------------------------------------------------------------------            
-BL_SD_1     jsr DBYT_BEGIN                    ;Decode segment byte
+BL_SD_1     jsr DBYT_BEGIN               ;Decode segment byte
             ldy #$00
             lda STATUS
             sta (FMSZPG+3),Y             ;Store to the desried location
@@ -206,7 +206,7 @@ BL_SD_2     lda FMSZPG+3                 ;Check if segment fully read
             jsr DBYT_BEGIN               ;Get another byte - checksum
             lda STATUS
             cmp CHKSUM                   ;Verify checksum
-            bne BL_NOPILOT                    ;If no match, then load error
+            bne BL_NOPILOT               ;If no match, then load error
             
             lda #$00                     ;Reset checksum
             sta CHKSUM
@@ -215,7 +215,7 @@ BL_SD_2     lda FMSZPG+3                 ;Check if segment fully read
             ora INITAD+1
             beq BL_SH_1                  ;If no change, continue with next seg.
             
-            jsr DEC_TERM                    ;Terminate decoding
+            jsr DEC_TERM                 ;Terminate decoding
             jsr BL_DOINIT                ;Execute INIT segment
             
             lda #$00                     ;Reset the INITAD
@@ -224,7 +224,7 @@ BL_SD_2     lda FMSZPG+3                 ;Check if segment fully read
             jsr BEGIN_LOADING            ;Restart decoding and wait for pilot
             
             beq BL_SH_1                  ;If pilot, go decode next segment
-BL_NOPILOT  jmp LD_ERROR                    ;No pilot - load error
+BL_NOPILOT  jmp LD_ERROR                 ;No pilot - load error
 BL_DOINIT   jmp (INITAD)
 
 ;-------------------------------------------------------------------------------
@@ -232,8 +232,8 @@ BL_DOINIT   jmp (INITAD)
 ;-------------------------------------------------------------------------------
 BL_RUNIT    lda #$25
             sta PUPBT3
-            jsr DEC_TERM                  ;Terminate decoding
-            jmp (RUNAD)                ;Run the loaded program
+            jsr DEC_TERM                ;Terminate decoding
+            jmp (RUNAD)                 ;Run the loaded program
             
 ;-------------------------------------------------------------------------------
 ; Prepare for decoding
