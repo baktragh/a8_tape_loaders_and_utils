@@ -9,6 +9,9 @@
 ;loader requires only about 700 bytes.
 ;
 ;The L3 loader works with both signal inputs (joystick port and SIO DATA IN).
+;The input is automatically detected
+;
+;Assemble with ATASM
 ;
 ;The file format is the following:
 ;Segment header block  
@@ -175,14 +178,19 @@ DEC_BLOCK   jsr PREP_SYS           ; Disable interrupts, motor ON
             sta FMSZPG+6           ; Store $FF to FMSZPG+6
             
 ; Wait for pilot tone (at least 256 pulses)            
-L_J_SIG     jsr SWITCH_SIG         ; Switch signal sourceldx #$00               ; X=0
-L07FD       ldx #0
-L07FE       lda CONSOL             ; Check console keys (no effect)
+L_J_SIG     jsr SWITCH_SIG         ; Switch signal source
+
+L07FD       ldx #0                 ; Reset mini counter
+L07FE       inx                    ; Increment mini counter
+            beq L_J_SIG            ; Timeout - try again
+            
 L_DET1      lda SKSTAT             ; Check PORT A or DATA IN
 L_AND1      and #16                ; Check if log.1 on input
 L_CMP1      bne L07FE              ; If yes, keep waiting
-            lda #$00               ; White background
-            sta COLBK              ; 
+
+            lda #$00               ; Black background
+            sta COLBK              ;
+            tax                    ; Reset mini counter 
 L080D       inx                    ; Increment X
             bmi L_J_SIG            ; If waiting too long, repeat
             
