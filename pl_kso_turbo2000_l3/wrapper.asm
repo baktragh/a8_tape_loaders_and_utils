@@ -9,6 +9,10 @@
             BUFRHI=51
             BFENLO=52
             BFENHI=53
+            COLDST=$0244
+            BOOT  =$0009
+            CASINI      = $0002
+            WARMSV      = $E474
             
             LOADERSTART=2048
              
@@ -59,11 +63,19 @@ MVLAST
             DEX
             BNE MVLAST
 MVEXIT
-
 ;
 ; Start loader
 ;
-            JMP LOADERSTART
+            lda #0                        ;Warm start
+            sta COLDST                    
+            lda #02                       ;Cassette boot successfull
+            sta BOOT
+            lda #<LOADERSTART             ;CASINI to loader entry
+            sta CASINI
+            lda #>LOADERSTART
+            sta CASINI+1
+;            
+            JMP WARMSV                    ;Warm start
 ;
 ; Run segment
 ;
