@@ -78,7 +78,7 @@ L0631       lda #52           ;Switch program recorder to turbo mode
             sta POKMSK
             sta IRQEN
             
-            lda #252          ;Clear state byte
+            lda #251          ;Clear state byte
             sta LTEMP
             
             clc               ;Clear work fields 
@@ -121,16 +121,17 @@ L066E       ldy #209          ;Set pulse width unit counter base value
             cpy #222          ;Pulse too wide to be a sync pulse?
             bcs L066E         ;Yes, keep waiting
             jsr L06DB         ;Wait for edge
-            bcs NEXT_BYTE
+            bcs NEXT_BYT1
             jmp L06C2         ;If no edge, terminate decoding
             
 ;-------------------------------------------------------------------------------
 ; Decode data
 ;-------------------------------------------------------------------------------
 ;Get next byte
-NEXT_BYTE   ldy #198          ;Set pulse width unit counter base value
-            jmp L069D         ;Start decoding the data
-            
+NEXT_BYT1   ldy #196
+NEXT_BYTE   jsr GET8BITS      ;Start decoding the data
+
+;Determine if segment data byte or header            
 L0683       ldy LTEMP         ;Check state
             beq L068E         ;If zero, just place byte to the buffer
 
@@ -139,25 +140,25 @@ L0683       ldy LTEMP         ;Check state
 ;-------------------------------------------------------------------------------
 ;Initial byte            
             lda ICAX6Z
-            cpy #252          ;If one, this is initial byte
+            cpy #251          ;If one, this is initial byte
             bne NOT_ONE
             sta ICAX4Z        ;Keep the value
             jmp DO_CHSUM
 
 ;Setting BUFRLO            
-NOT_ONE     cpy #253          ;If two, set buffer start lo
+NOT_ONE     cpy #252          ;If two, set buffer start lo
             bne NOT_TWO
             sta BUFRLO
             jmp DO_CHSUM            
 
 ;Setting BUFRHI
-NOT_TWO     cpy #254         ;If three, set buffer start hi
+NOT_TWO     cpy #253         ;If three, set buffer start hi
             bne NOT_THREE
             sta BUFRHI
             jmp DO_CHSUM
             
 ;Setting BFENLO            
-NOT_THREE   cpy #255         ;If four, set buffer end lo
+NOT_THREE   cpy #254         ;If four, set buffer end lo
             bne NOT_FOUR
             sta BFENLO
             jmp DO_CHSUM
@@ -175,57 +176,66 @@ DO_CHSUM    lda CHKSUM
 ;Increment the state variable            
             iny
             sty LTEMP
+            ldy #200
             jmp NEXT_BYTE
 
 ;-------------------------------------------------------------------------------
 ; Process segment data bytes
 ;-------------------------------------------------------------------------------
+L068E
+;Update checksum
+            lda CHKSUM        ;Update checksum
+            eor ICAX6Z
+            sta CHKSUM
+
+;Verify if all data decoded            
+            lda BUFRLO        ;Check if all bytes decoded
+            cmp BFENLO
+            lda BUFRHI
+            sbc BFENHI
+            bcs SEGDONE      ;If all decoded, skip to termination
+
 ;Place segment byte to a buffer            
-L068E       ldy #0            ;Place byte to the buffer
+            ldy #0            ;Place byte to the buffer
             lda ICAX6Z
             sta (BUFRLO),Y
             inc BUFRLO        ;Update buffer pointer
             bne L069A
             inc BUFRHI
-L069A       ldy #200          ;Set pulse width unit counter base value
-                              ;Time compensation
             
-L069D       lda #1            ;Prepare bit mask
+L069A       ldy #200
+            JMP NEXT_BYTE
+
+;Done with segment
+SEGDONE     lda #0            ;Use CF=0 to indicate bad checksum
+            cmp CHKSUM
+            bcc L06C2         ;If bad checksum, terminate decoding
+
+            lda ICAX4Z        ;What was the first byte
+            and #[128+64]     ;Check for special flags
+            bne L06C1         ;If set, the block ends
+            
+            lda #251          ;Reset state to zero
+            sta LTEMP
+            jmp NEXT_BYTE     ;And continue processing
+;-------------------------------------------------------------------------------
+; Get 8 bits
+;-------------------------------------------------------------------------------
+GET8BITS    lda #1            ;Prepare bit mask
             sta ICAX6Z         
             
-L06A1       jsr L06D6         ;Measure width of the pulse
+G8B_L       jsr L06D6         ;Measure width of the pulse
             bcc L06C2         ;If no pulse, terminate decoding
             cpy #227          ;Determine wide or narrow pulse
             rol ICAX6Z        ;Rotate bit mask
             ldy #198          ;Set pulse width unit counter base value
-            bcc L06A1         ;If byte not finished, get next bit
+            bcc G8B_L         ;If byte not finished, get next bit
             
-            lda CHKSUM        ;Update checksum
-            eor ICAX6Z
-            sta CHKSUM
-            
-            lda BUFRLO        ;Check if all bytes decoded
-            cmp BFENLO
-            lda BUFRHI
-            sbc BFENHI
-            bcc L0683         ;If not all decoded, place byte to memory
-               
-            lda #0            ;Use CF=0 to indicate bad checksum
-            cmp CHKSUM
-            bcc L06C2         ;If bad checksum, terminate decoding
-            
-            lda ICAX4Z        ;What was the first byte
-            and #[128+64]     ;Check for special flags
-            bne L06C2         ;If set, the block ends
-            
-            lda #252          ;Reset state to zero
-            sta LTEMP
-            jmp NEXT_BYTE     ;And continue processing
-            
-            sec               ;Indicate successful block read
+            rts
 ;-------------------------------------------------------------------------------
 ; Terminate decoding
-;-------------------------------------------------------------------------------            
+;------------------------------------------------------------------------------- 
+L06C1       sec               ;Successful block reading           
 L06C2       lda #192          ;Enable interrupts
             sta NMIEN
             sta POKMSK
