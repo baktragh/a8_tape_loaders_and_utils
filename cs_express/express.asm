@@ -16,9 +16,9 @@
 ;                  
 ;===============================================================================
 
-
-            .INCLUDE "equates.asm"
-            *=2048
+            OPT H+
+            ICL "equates.asm"
+            ORG 2048
 
 START       jsr DOSINIT       ;Setup DOS vectors   
 
@@ -143,7 +143,7 @@ L0683       ldy LTEMP         ;Check state
             cpy #251          ;If one, this is initial byte
             bne NOT_ONE
             sta ICAX4Z        ;Keep the value
-            jmp DO_CHSUM
+            jmp PUT_CHSUM     ;Start new checksum count
 
 ;Setting BUFRLO            
 NOT_ONE     cpy #252          ;If two, set buffer start lo
@@ -172,7 +172,7 @@ NOT_FOUR    sta BFENHI       ;If five, set buffer end hi
 ;Checksum for the header bytes            
 DO_CHSUM    lda CHKSUM
             eor ICAX6Z
-            sta CHKSUM
+PUT_CHSUM   sta CHKSUM
 ;Increment the state variable            
             iny
             sty LTEMP
@@ -217,7 +217,7 @@ SEGDONE     lda #0            ;Use CF=0 to indicate bad checksum
             
             lda #251          ;Reset state to zero
             sta LTEMP
-            jmp NEXT_BYTE     ;And continue processing
+            jmp NEXT_BYT1     ;And continue processing
 ;-------------------------------------------------------------------------------
 ; Get 8 bits
 ;-------------------------------------------------------------------------------
@@ -257,7 +257,7 @@ L06DD       dex
             bne L06DD
             
             lda STATUS        ;Get prior status of DATA IN  
-            lsr A             ;Shift it
+            lsr             ;Shift it
             and LTEMP+1       ;Display stripe (if mask on)
             sta COLBK
             
