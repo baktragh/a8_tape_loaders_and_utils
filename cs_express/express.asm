@@ -225,7 +225,8 @@ SEGDONE     lda #0            ;Use CF=0 to indicate bad checksum
             
             lda #STATE_ID     ;Reset state to zero
             sta LTEMP
-            jmp NEXT_BYT1     ;And continue processing
+            ldy #200
+            jmp NEXT_BYTE     ;And continue processing
 ;-------------------------------------------------------------------------------
 ; Get 8 bits
 ;-------------------------------------------------------------------------------
