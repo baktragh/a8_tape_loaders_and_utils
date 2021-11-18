@@ -6,21 +6,42 @@
 ; - Pilot tone needed only after INIT segments
 
 ; Block format
-; (0) ID Byte .... 1001   Turbo 2000 Express Loader
-;             1... ....   This is the last block of file
-;             .1.. ....   This block holds INIT segment
-;
-; (1) Buffer range  (BUFLO,BUFHI,BFENLO,BFENHI)
-; (5) Data bytes    (given by the buffer range)
-; (x) XOR based checksum (all bytes before)
+; (0)    ID Byte .... 0101  Turbo 2000 Express Loader signature
+;                1... ....  This is the last block of file
+;               .1.. ....   This block holds INIT segment
+; (1)    Buffer range  (BUFLO,BUFHI,BFENLO,BFENHI)
+; (5..x) Data bytes    (given by the buffer range)
+; (x+1)  XOR based checksum (all bytes before)
 ;                  
+;
+; What bytes are read is given by a "state" of the loader that is
+; held in the LTEMP variable
+;
+; STATE_ID    - Reading ID byte (initial state)
+; STATE_BUFLO - Reading BUFLO
+; STATE_BUFHI - Reading BUFHI
+; STATE_BFENLO - Reading BFENLO
+; STATE_BFENHI - Reading BFENHI
+; STATE_DATA   - Reading segment data and checksum
+;
+; Assemble with MADS
 ;===============================================================================
 
-            OPT H+
+            OPT H-
             ICL "equates.asm"
+;--------------------------------------------------------------------------------
+; State codes
+;--------------------------------------------------------------------------------
+            STATE_ID=1
+            STATE_BUFLO=2
+            STATE_BUFHI=3
+            STATE_BFENLO=4
+            STATE_BFENHI=5
+            STATE_DATA=0            
+;--------------------------------------------------------------------------------
+; Mainline code
+;--------------------------------------------------------------------------------
             ORG 2048
-
-START       jsr DOSINIT       ;Setup DOS vectors   
 
 GOLOAD      jsr L0631         ;Call Turbo 2000 block decoding subroutine
             bcc HANDLE_ERROR  ;If error occured, handle error
@@ -30,7 +51,7 @@ GOLOAD      jsr L0631         ;Call Turbo 2000 block decoding subroutine
             beq NOT_INIT      ;If not, skip
             jsr DOINIT        ;Go perform init jump
             
-NOT_INIT    lda ICAX4Z
+NOT_INIT    lda ICAX4Z        ;Check ID byte
             and #128          ;Check for EOF
             bne END_LOAD      ;If set, terminate loading
             jmp GOLOAD        ;If not, go and read next block    
@@ -42,12 +63,15 @@ RUNIT       jmp (RUNAD)       ;Run loaded program
 DOINIT      jmp (INITAD)      ;Perform INIT jump
             
 ;-------------------------------------------------------------------------------
-; Load error
+; Load error - Display red screen and wait until RESET
 ;-------------------------------------------------------------------------------            
-HANDLE_ERROR lda #04
+HANDLE_ERROR lda #$18
+             sta COLOR2
              sta COLOR4
              sta COLBK
-             jmp HANDLE_ERROR
+             sta COLPF2
+             sta COLDST       ;Ensure COLD start
+ERR_LOOP     jmp ERR_LOOP     ;Endless loop
 ;===============================================================================
 ;Block decoding subroutine
 ;Block is placed from: BUFRLO+256*BUFRHI
@@ -62,12 +86,13 @@ HANDLE_ERROR lda #04
 ;
 ;Fields used:
 ; BUFRLO,BUFRHI,BFENLO,BFENHI - Buffer pointer
-; LTEMP   - State byte
+; LTEMP   - State code
 ; CHKSUM  - Checksum
 ; LTEMP+1 - Display mask (0 no display, 255 display)
 ; ICAX5Z  - Counter of pilot tone pulses
 ; ICAX6Z  - Byte being decoded
-; STATUS  - Prior DATA IN logical value       
+; STATUS  - Prior DATA IN logical value   
+; ICAX4Z  - ID byte store    
 ;===============================================================================
    
 L0631       lda #52           ;Switch program recorder to turbo mode                                                             
@@ -78,7 +103,7 @@ L0631       lda #52           ;Switch program recorder to turbo mode
             sta POKMSK
             sta IRQEN
             
-            lda #251          ;Clear state byte
+            lda #STATE_ID     ;Initial state
             sta LTEMP
             
             clc               ;Clear work fields 
@@ -87,8 +112,6 @@ L0631       lda #52           ;Switch program recorder to turbo mode
             sty CHKSUM
             sty NMIEN
             sty DMACLT
-            
- 
 ;-------------------------------------------------------------------------------
 ; Wait for 256 pilot tone pulses
 ;-------------------------------------------------------------------------------           
@@ -128,7 +151,7 @@ L066E       ldy #209          ;Set pulse width unit counter base value
 ; Decode data
 ;-------------------------------------------------------------------------------
 ;Get next byte
-NEXT_BYT1   ldy #196
+NEXT_BYT1   ldy #198          ;Reset pulse timer
 NEXT_BYTE   jsr GET8BITS      ;Start decoding the data
 
 ;Determine if segment data byte or header            
@@ -139,45 +162,30 @@ L0683       ldy LTEMP         ;Check state
 ; Process block header bytes
 ;-------------------------------------------------------------------------------
 ;Initial byte            
-            lda ICAX6Z
-            cpy #251          ;If one, this is initial byte
-            bne NOT_ONE
+            lda ICAX6Z        ;Hold the byte we just read
+            cpy #STATE_ID          ;If one, this is initial byte
+            bne NOT_ID
             sta ICAX4Z        ;Keep the value
             jmp PUT_CHSUM     ;Start new checksum count
 
-;Setting BUFRLO            
-NOT_ONE     cpy #252          ;If two, set buffer start lo
-            bne NOT_TWO
-            sta BUFRLO
-            jmp DO_CHSUM            
-
-;Setting BUFRHI
-NOT_TWO     cpy #253         ;If three, set buffer start hi
-            bne NOT_THREE
-            sta BUFRHI
-            jmp DO_CHSUM
-            
-;Setting BFENLO            
-NOT_THREE   cpy #254         ;If four, set buffer end lo
-            bne NOT_FOUR
-            sta BFENLO
-            jmp DO_CHSUM
-
-;Setting BFENHI            
-NOT_FOUR    sta BFENHI       ;If five, set buffer end hi
-            nop
-            nop
-            nop 
+;Setting BUFRLO,BUFRHI,BFENLO,BFENHI
+;State code is used for indexing, offset is 2            
+NOT_ID      sta BUFRLO-STATE_BUFLO,Y
 
 ;Checksum for the header bytes            
 DO_CHSUM    lda CHKSUM
             eor ICAX6Z
 PUT_CHSUM   sta CHKSUM
-;Increment the state variable            
-            iny
-            sty LTEMP
-            ldy #200
-            jmp NEXT_BYTE
+
+;Transition to the new state
+            iny                     ;Presume going to higher state
+            cpy #[STATE_BFENHI+1]   ;Is the state past last buffer state?
+            bne PUT_STATE           ;No,skip
+            ldy #STATE_DATA         ;Reset to state data
+PUT_STATE   sty LTEMP
+            
+            ldy #200                ;Reset pulse timer
+            jmp NEXT_BYTE           ;Go and get next byte
 
 ;-------------------------------------------------------------------------------
 ; Process segment data bytes
@@ -203,8 +211,8 @@ L068E
             bne L069A
             inc BUFRHI
             
-L069A       ldy #200
-            JMP NEXT_BYTE
+L069A       ldy #200          ;Reset pulse timer
+            JMP NEXT_BYTE     ;Go and get next byte
 
 ;Done with segment
 SEGDONE     lda #0            ;Use CF=0 to indicate bad checksum
@@ -215,7 +223,7 @@ SEGDONE     lda #0            ;Use CF=0 to indicate bad checksum
             and #[128+64]     ;Check for special flags
             bne L06C1         ;If set, the block ends
             
-            lda #251          ;Reset state to zero
+            lda #STATE_ID     ;Reset state to zero
             sta LTEMP
             jmp NEXT_BYT1     ;And continue processing
 ;-------------------------------------------------------------------------------
@@ -275,14 +283,3 @@ L06E8       iny               ;Increment pulse width unit counter
 L06FC       dec BRKKEY
 L06FE       clc
 L06FF       rts
-
-;-----------------------------------------------
-;Initialization of DOS vectors
-;-----------------------------------------------
-DOSINIT     ldx #<2048
-            stx DOSINI
-            ldx #>2048
-            stx DOSINI+1
-            ldx #0
-            sta WARMST
-            rts 
