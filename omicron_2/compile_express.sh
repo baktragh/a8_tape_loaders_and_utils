@@ -1,5 +1,5 @@
 #!/bin/sh
-mads -o:omicron_express.xbin omicron_express.asm 
+mads -l:build/omicron_express.lst -o:omicron_express.xbin omicron_express.asm 
 mads -o:build/omicron_express.bin omicron_express_wrapper.asm
 
 #Remove temporary object file

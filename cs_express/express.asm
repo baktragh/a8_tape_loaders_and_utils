@@ -266,7 +266,7 @@ L06DD       dex
             bne L06DD
             
             lda STATUS        ;Get prior status of DATA IN  
-            lsr             ;Shift it
+            lsr               ;Shift it
             and LTEMP+1       ;Display stripe (if mask on)
             sta COLBK
             

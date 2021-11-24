@@ -269,8 +269,7 @@ L06DD       dex
             
             lda STATUS        ;Get prior status of DATA IN  
             lsr               ;Shift it
-            ora #$12          ;Color
-            nop               ;Compensate
+L_BKG       ora #$00          ;Color. This is zapped by signal switch
             and LTEMP+1
             sta COLBK
             
@@ -289,6 +288,8 @@ L06FC       dec BRKKEY
 L06FE       clc
 L06FF       rts
 
+VOLATILE    EQU *-1           ;Volatile area tag
+
 ;-----------------------------------------------------------------------------
 ; Switch signal source
 ;-----------------------------------------------------------------------------
@@ -302,6 +303,8 @@ SW_TOJOY    lda #$00           ;$D300
             sta L_DET+2
             lda #128           ;Bit 7
             sta L_AND+1
+            lda #$24           ;Unify luminance to 4, shift colors by 2
+            sta L_BKG+1
             bne SW_END
         
 SW_TOSIO    lda #$0F
@@ -310,6 +313,8 @@ SW_TOSIO    lda #$0F
             sta L_DET+2
             lda #16
             sta L_AND+1
+            lda #$10           
+            sta L_BKG+1        ;Set primary color
             
 SW_END      pla                ;Restore everything
             rts                ;Return
