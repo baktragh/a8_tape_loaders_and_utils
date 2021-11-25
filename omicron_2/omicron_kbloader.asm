@@ -387,7 +387,7 @@ L0692       jsr L0697
 
 L0697       lda STATUS    ; 4 cycles   (128/16 or 0)
             lsr A         ; 2 cycles   (64/8 or 0)
-L_BGC       ora #$B2      ; 2 cycles   (Base color - green or purple)
+L_BKG       ora #$00      ; 2 cycles   (Zapped by signal switch)
             nop           ; 2 cycles   (Filler)
             and LTEMP+1
             sta COLBK
@@ -445,6 +445,8 @@ SW_TOJOY    lda #$00           ;$D300
             sta L_DET+2
             lda #128           ;Bit 7
             sta L_AND+1
+            lda #$24           
+            sta L_BKG+1        ;Set primary color            
             bne SW_END
         
 SW_TOSIO    lda #$0F
@@ -453,6 +455,8 @@ SW_TOSIO    lda #$0F
             sta L_DET+2
             lda #16
             sta L_AND+1
+            lda #$10           
+            sta L_BKG+1        ;Set primary color            
             
 SW_END      pla                ;Restore everything
             rts                ;Return          

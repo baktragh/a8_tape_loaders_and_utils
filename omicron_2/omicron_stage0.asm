@@ -282,6 +282,7 @@ L06DD       dex
             lda STATUS
             lsr A
             and LTEMP+1
+L_BKG       ora #$00            ;Color, zapped by signal switch
             sta COLBK
 L06E8       iny
             beq L06FE
@@ -312,6 +313,8 @@ SW_TOJOY    dec ICSTAZ         ;Switch indicator
             sta L_DET+2
             lda #128           ;Bit 7
             sta L_AND+1
+            lda #$34           
+            sta L_BKG+1        ;Set primary color            
             bne SW_END
         
 SW_TOSIO    inc ICSTAZ         ;Switch indicator
@@ -321,6 +324,8 @@ SW_TOSIO    inc ICSTAZ         ;Switch indicator
             sta L_DET+2
             lda #16
             sta L_AND+1
+            lda #$20           
+            sta L_BKG+1        ;Set primary color            
             
 SW_END      pla                ;Restore everything
             plp
