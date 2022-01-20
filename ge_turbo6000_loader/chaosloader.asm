@@ -1025,8 +1025,6 @@ L09E3       dex                    ; Decrement X
             
 PREP_SPORT  lda #$36               ; Motor ON + Enable Proceed Interrupt
             sta PACTL        
-            lda #52
-            sta PBCTL              ; 
             jsr WAIT_SPORT         ; Wait for a while and set DMA
             jsr W_EDGE             ; Wait for edge
             tya                    ; A=Y (Set zero)
