@@ -130,7 +130,7 @@ L065F       jsr L06D6         ;Measure width of the pulse
             cpy #216          ;Is the pulse too long?
             bcc L0652         ;Yes, start over
             inc ICAX5Z        ;Increment pilot tone pulse counter
-            bne L065D         ;If not enoguh pilot tone pulses (255), get next
+            bne L065D         ;If not enough pilot tone pulses (255), get next
             dec LTEMP+1       ;More than 255 pilot tone pulses - display stripes
 
 ;-------------------------------------------------------------------------------
@@ -267,6 +267,7 @@ L06DD       dex
             
             lda STATUS        ;Get prior status of DATA IN  
             lsr               ;Shift it
+            ora #$10          ;Color
             and LTEMP+1       ;Display stripe (if mask on)
             sta COLBK
             
