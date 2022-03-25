@@ -104,9 +104,9 @@ RELO_P2_L lda  [1024-128],X
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
 BLTOP     jsr GET_BLOCK           ;Get first block
-          lda #<[BLOCK_BUFFER+40] ;Special setup for the first block
+          lda #<[BLOCK_BUFFER+43] ;Special setup for the first block
           sta BUFRLO
-          lda #>[BLOCK_BUFFER+40]
+          lda #>[BLOCK_BUFFER+43]
           sta BUFRHI
 ;          
           jsr SCREEN              ;Setup screen
@@ -231,12 +231,12 @@ GET_BLOCK pha
           sta DBUFLO
           lda #>BLOCK_BUFFER
           sta DBUFHI
-          lda #30
+          lda #35
           sta DTIMLO
           
-          lda #<BUF_LEN          ;Set buffer length
+          lda #<[BUF_LEN-1]          ;Set buffer length
           sta DBYTLO
-          lda #>BUF_LEN
+          lda #>[BUF_LEN-1]
           sta DBYTHI
           
           lda #$80               ;Short gaps between records
