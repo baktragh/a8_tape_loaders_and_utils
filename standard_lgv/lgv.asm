@@ -15,7 +15,7 @@
 ;
 ;Using the LDRTYPE symbol, this loader can be assembled 
 ;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file. 
-;Assemble with the ATASM cross-assembler
+;Assemble with the mads cross-assembler
 ;
 ;Physical format
 ;---------------
@@ -50,10 +50,12 @@
 ;===============================================================================
             
 
-          .INCLUDE "equates.asm"
-.IF LDRTYPE=0          
+          ICL "equates.asm"
+.IF LDRTYPE=0
+          OPT H-         
           LDR_START=[2048-23]
 .ELSE
+          OPT H+
           LDR_START=2048
 .ENDIF
           
@@ -73,7 +75,7 @@
           
           BUF_LEN   = [512+2+1+1]      
 
-          *=[LDR_START]
+          ORG LDR_START
 ;-------------------------------------------------------------------------------
 ; Boot header
 ;-------------------------------------------------------------------------------
@@ -95,8 +97,8 @@ BOOTHEAD  .BYTE 0                 ;Boot flag 0
 ; buffer to the intended place.
 ; X = 255 from above, loop down to 128.
 ;-------------------------------------------------------------------------------
-RELO_P2_L lda  [1024-128],X
-          sta  [LDR_START+384-128],X
+RELO_P2_L lda  1024-128,X
+          sta  LDR_START+384-128,X
           dex  
           bmi  RELO_P2_L
 .ENDIF         

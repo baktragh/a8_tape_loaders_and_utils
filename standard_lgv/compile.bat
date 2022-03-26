@@ -1,4 +1,4 @@
 @ECHO OFF
-C:\utils\a8\atasm\atasm -dLDRTYPE=1 -s -v -olgv.xex lgv.asm 
-C:\utils\a8\atasm\atasm -dLDRTYPE=0 -s -v -r -olgv.bot lgv.asm
+C:\utils\a8\mads\mads -d:LDRTYPE=0 -o:lgv.bot lgv.asm
+C:\utils\a8\mads\mads -d:LDRTYPE=1 -o:lgv.xex lgv.asm
 PAUSE
