@@ -260,9 +260,9 @@ GB_NOSPECIAL
           sta BUFRLO
           lda #>[BLOCK_BUFFER+3]
           sta BUFRHI
-          lda #<[BLOCK_BUFFER+3+512+1]
+          lda #<[BLOCK_BUFFER+3+512]
           sta BFENLO
-          lda #>[BLOCK_BUFFER+3+512+1]
+          lda #>[BLOCK_BUFFER+3+512]
           sta BFENHI
           
           pla
