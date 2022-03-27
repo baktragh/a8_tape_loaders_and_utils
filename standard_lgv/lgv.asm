@@ -309,15 +309,16 @@ ERRREST  jmp WARMSV              ;Perform warm reset
 ;===============================================================================
 SCREEN    lda #9                  ;Requesting PRINT
           sta CIO0_OP
-          lda #<BLOCK_BUFFER+5
+          lda #<(BLOCK_BUFFER+5)
           sta CIO0_BUFLO
-          lda #>BLOCK_BUFFER+5
+          lda #>(BLOCK_BUFFER+5)
           sta CIO0_BUFHI
-          lda #[1+34+1]
+          lda #[1+30+1]
           sta CIO0_LENLO
           ldx #0                  ;Channel 0
           stx CIO0_LENHI
           jsr CIOV                ;Call CIO
+          rts
 ;-------------------------------------------------------------------------------
 ; Loader startup  - establish ourselves as DOS
 ;-------------------------------------------------------------------------------
