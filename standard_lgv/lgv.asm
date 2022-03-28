@@ -37,7 +37,10 @@
 ;  5: CLRSCR character (atascii)
 ;  6: Program title (atascii), 30 characters total
 ; 36: EOL character (atascii)
-; 37: Reserve bytes
+; 37: Background color
+; 38: .... 1111 Foreground luminance
+;     1... .... Cursor OFF flag
+; 39: Reserve 
 ; 40: Segment block(s)
 ;     2 bytes first address
 ;     2 bytes last address
@@ -73,7 +76,20 @@
           SG_BFENLO = 131
           SG_BFENHI = 132  
           
-          BUF_LEN   = [512+2+1+1]      
+          BUF_LEN   = [512+2+1+1]
+          BLK_DOFS  = 3
+              
+          HB_SOUNDR = 4+BLK_DOFS
+          HB_CLRSCR = 5+BLK_DOFS
+          HB_BG     = 37+BLK_DOFS
+          HB_LUM    = 38+BLK_DOFS
+          HB_LUM_MASK = $0F
+          HB_FLG_MASK = $F0
+          HB_FLAGS  = 38+BLK_DOFS  
+          HB_DATA   = 40+BLK_DOFS
+          
+          
+          TITLE_LEN = 30+2
 
           ORG LDR_START
 ;-------------------------------------------------------------------------------
@@ -106,9 +122,9 @@ RELO_P2_L lda  1024-128,X
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
 BLTOP     jsr GET_BLOCK           ;Get first block
-          lda #<[BLOCK_BUFFER+43] ;Special setup for the first block
+          lda #<(BLOCK_BUFFER+HB_DATA) ;Special setup for the first block
           sta BUFRLO
-          lda #>[BLOCK_BUFFER+43]
+          lda #>(BLOCK_BUFFER+HB_DATA)
           sta BUFRHI
 ;          
           jsr SCREEN              ;Setup screen
@@ -256,13 +272,13 @@ GB_OK     lda BLOCK_BUFFER+2     ;Get flag byte
           sta PACTL
           
 GB_NOSPECIAL
-          lda #<[BLOCK_BUFFER+3]
+          lda #<[BLOCK_BUFFER+BLK_DOFS]
           sta BUFRLO
-          lda #>[BLOCK_BUFFER+3]
+          lda #>[BLOCK_BUFFER+BLK_DOFS]
           sta BUFRHI
-          lda #<[BLOCK_BUFFER+3+512]
+          lda #<[BLOCK_BUFFER+BLK_DOFS+512]
           sta BFENLO
-          lda #>[BLOCK_BUFFER+3+512]
+          lda #>[BLOCK_BUFFER+BLK_DOFS+512]
           sta BFENHI
           
           pla
@@ -307,17 +323,35 @@ ERRREST  jmp WARMSV              ;Perform warm reset
 ;===============================================================================
 ; Loader Screen and startup sequence
 ;===============================================================================
-SCREEN    lda #9                  ;Requesting PRINT
+SCREEN
+;Other elements of LaF
+          lda BLOCK_BUFFER+HB_BG  ;Set background
+          sta COLOR2
+          
+          lda BLOCK_BUFFER+HB_LUM ;Set luma
+          and #HB_LUM_MASK
+          sta COLOR1
+          
+          lda BLOCK_BUFFER+HB_SOUNDR ;Set SOUNDR
+          sta SOUNDR
+          
+          lda BLOCK_BUFFER+HB_FLAGS ;Set cursor inhibition
+          and #HB_FLG_MASK
+          sta CRSINH
+
+;Program title
+          lda #9                  ;Requesting PRINT
           sta CIO0_OP
-          lda #<(BLOCK_BUFFER+5)
+          lda #<(BLOCK_BUFFER+HB_CLRSCR)
           sta CIO0_BUFLO
-          lda #>(BLOCK_BUFFER+5)
+          lda #>(BLOCK_BUFFER+HB_CLRSCR)
           sta CIO0_BUFHI
-          lda #[1+30+1]
+          lda #TITLE_LEN
           sta CIO0_LENLO
           ldx #0                  ;Channel 0
           stx CIO0_LENHI
           jsr CIOV                ;Call CIO
+          
           rts
 ;-------------------------------------------------------------------------------
 ; Loader startup  - establish ourselves as DOS
