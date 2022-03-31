@@ -1,7 +1,9 @@
 ;===============================================================================
-;TURGEN SYSTEM - LBE
+;TURGEN - LB-Express (LBR)
 ;Binary loader for standard (FSK) tape records using special file
-;format
+;format for increased loading efficiency
+;
+;Michael Kalouš of the BAKTRA Software, 2022.
 ;
 ;The author has placed this work in the Public Domain, thereby relinquishing all
 ;copyrights. Everyone is free to use, modify, republish, sell or give away this
@@ -14,11 +16,12 @@
 ;pre-XL/XE Atari computers
 ;
 ;Using the LDRTYPE symbol, this loader can be assembled 
-;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file. 
-;Assemble with the mads cross-assembler
+;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file.
+; 
+;Assemble with the MADS cross-assembler
 ;
-;Physical format
-;---------------
+;Physical block format
+;---------------------
 ; Blocks are 512+2+1+1 bytes long
 ; Block structure:
 ; 0,1: 0x55 0x55 - Standard for SIO tape records
@@ -29,6 +32,7 @@
 ; Checksum (Standard SIO checksum)
 ;
 ;Logical file format
+;--------------------
 ;  0: Eye-catcher ('L')
 ;  1: Progress indicator initial position
 ;  2: Progress indicator final position
@@ -253,7 +257,7 @@ GET_BLOCK pha
           lda #35
           sta DTIMLO
           
-          lda #<[BUF_LEN-1]          ;Set buffer length
+          lda #<[BUF_LEN-1]      ;Set buffer length
           sta DBYTLO
           lda #>[BUF_LEN-1]
           sta DBYTHI
@@ -267,12 +271,13 @@ GET_BLOCK pha
           jmp ERRHNDL
           
 GB_OK     lda BLOCK_BUFFER+2     ;Get flag byte
-          and #128+64
-          beq GB_NOSPECIAL
-          lda #60
+          and #128+64            ;Test for EOF or INIT
+          beq GB_NOSPECIAL       ;None of these, continue
+          
+          lda #60                ;Motor OFF
           sta PACTL
           
-GB_NOSPECIAL
+GB_NOSPECIAL                     ;Set the standard buffer range
           lda #<[BLOCK_BUFFER+BLK_DOFS]
           sta BUFRLO
           lda #>[BLOCK_BUFFER+BLK_DOFS]
@@ -303,7 +308,7 @@ SET_PROGRESS
 ;===============================================================================
 ; Error handling
 ; Note: No need to preserve stack consistency, error handling 
-;       always results in warm start
+;       always results in warm start.
 ;===============================================================================
 ERRHNDL  lda #$24                ;I/O error - red background
 
@@ -311,6 +316,7 @@ ERRSIG   sta COLOR4              ;Signalize error by changing background
          sta COLOR2
          sta COLBK
          sta COLPF2
+         
          lda #60                 ;Switch off the motor
          sta PACTL  
          
@@ -355,7 +361,7 @@ SCREEN
           
           rts
 ;-------------------------------------------------------------------------------
-; Loader startup  - establish ourselves as DOS
+; Loader startup  - establish the loader as DOS
 ;-------------------------------------------------------------------------------
 STARTUP   ldx #0                  ;Reset cold start flag
           stx COLDST
@@ -377,7 +383,7 @@ DO_RTS    rts
 ;===============================================================================
 ; BUFFER
 ;===============================================================================
-          .BYTE 'B'
+          .BYTE 'B'               ;Eye-catcher before buffer
 BLOCK_BUFFER
 
 ;===============================================================================
@@ -386,7 +392,4 @@ BLOCK_BUFFER
 .IF LDRTYPE=1
           *=RUNAD
           .BYTE <BLTOP,>BLTOP
-.ENDIF
-
-  
-                
+.ENDIF          
