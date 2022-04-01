@@ -62,7 +62,7 @@
           OPT H-         
           LDR_START=[2048-23]
 .ELSE
-          OPT H+
+          OPT H+,F+
           LDR_START=2048
 .ENDIF
           
@@ -390,6 +390,6 @@ BLOCK_BUFFER
 ; RUN segment
 ;===============================================================================
 .IF LDRTYPE=1
-          *=RUNAD
-          .BYTE <BLTOP,>BLTOP
+          RUN BLTOP
+          
 .ENDIF          
