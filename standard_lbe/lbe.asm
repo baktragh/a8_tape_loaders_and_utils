@@ -1,19 +1,23 @@
 ;===============================================================================
-;TURGEN - LB-Express (LBR)
+;TURGEN - LB-Express (LBE)
 ;Binary loader for standard (FSK) tape records using special file
-;format for increased loading efficiency
+;format for increased loading efficiency.
 ;
 ;Michael Kalouš of the BAKTRA Software, 2022.
+;===============================================================================
 ;
 ;The author has placed this work in the Public Domain, thereby relinquishing all
 ;copyrights. Everyone is free to use, modify, republish, sell or give away this
 ;work without prior consent from anybody.
 ;
+
+;Notes for develpoers
+;--------------------
 ;This loader uses the "trailing EOF record trick" - the last 128 bytes of the
 ;loader are in the EOF block. These 128 bytes are moved from the cassette
 ;buffer to the intended memory location. The trick allows this loader to be
-;only 4 records long. ;The loader is compatible with XL/XE and 
-;pre-XL/XE Atari computers
+;one record shorter. The loader is compatible with XL/XE and 
+;pre-XL/XE Atari computers.
 ;
 ;Using the LDRTYPE symbol, this loader can be assembled 
 ;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file.
@@ -54,6 +58,7 @@
 ;Maintence log
 ;-------------
 ;2022-03-04 Initial version
+;2022-04-11 Add support for showing loading progress using PMG
 ;===============================================================================
             
 
@@ -83,6 +88,10 @@
           BUF_LEN   = [512+2+1+1]
           BLK_DOFS  = 3
               
+          HB_P_FIRST= 1+BLK_DOFS
+          HB_P_LAST = 2+BLK_DOFS
+          HB_P_STEP = 3+BLK_DOFS    
+          
           HB_SOUNDR = 4+BLK_DOFS
           HB_CLRSCR = 5+BLK_DOFS
           HB_BG     = 37+BLK_DOFS
@@ -102,7 +111,7 @@
 ;-------------------------------------------------------------------------------
 .IF LDRTYPE=0
 BOOTHEAD  .BYTE 0                 ;Boot flag 0
-          .BYTE 3                 ;3 blocks + 1 EOF blocks
+          .BYTE 3                 ;3 blocks + 1 EOF block
           .WORD [LDR_START]       ;Load address
           .WORD DO_RTS            ;Initialization address - just RTS
 ;-------------------------------------------------------------------------------
@@ -132,8 +141,8 @@ BLTOP     jsr GET_BLOCK           ;Get first block
           lda #>(BLOCK_BUFFER+HB_DATA)
           sta BUFRHI
 ;          
-          jsr SCREEN              ;Setup screen
           jsr SET_PROGRESS        ;Set progress indicators
+          jsr SCREEN              ;Setup screen
           
 BL_START  
 ;===============================================================================
@@ -297,13 +306,51 @@ RUN_PROGRAM
 
 ;===============================================================================
 ; Progress handling
+; The progress indication works as follows:
+; M1 and M2 indicate first and last position
+; M0 indicates the actual progress by moving from M1 to M2
+; The positions are set by an authoring tool
+; Movement is controlled by movement code. In general, the movement code
+; indicates how far M0 moves after each block.
 ;===============================================================================
-SET_PROGRESS 
+SET_PROGRESS          
+;Set positions of the Ms
+          lda BLOCK_BUFFER+HB_P_FIRST          ;Get first position
+          sta P_X                              ;Save it
+          sta HPOSM0                           ;Set it for M0 and M1
+          sta HPOSM1
+          lda BLOCK_BUFFER+HB_P_LAST           ;Get last position
+          sta HPOSM2                           ;Set it for M2
+          lda BLOCK_BUFFER+HB_P_STEP           ;Get step code
+          sta P_C                              ;Save it
+;Set graphics pattern for the missiles
+          lda #(1+4+8+16+32)
+          sta GRAFM
+;Set color shadows for the missiles
+          lda #12
+          sta PCOLR0
+          sta PCOLR1
+          sta PCOLR2    
+;Switch the PMG on
+          lda #1
+;         sta GRACTL
+          sta PRIOR
+          sta GPRIOR
+          
+          lda RTCLOK+2
+L1        cmp RTCLOK+2
+          beq L1    
+          
+          lda RTCLOK+2
+L2        cmp RTCLOK+2
+          beq L2                          
+                                                   
           rts
-
 ;===============================================================================
 ;Main data area
 ;===============================================================================
+P_X       .BYTE 0
+P_C       .BYTE 0
 
 ;===============================================================================
 ; Error handling
