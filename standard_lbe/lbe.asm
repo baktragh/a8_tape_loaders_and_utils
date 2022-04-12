@@ -358,18 +358,19 @@ RUN_PROGRAM
 ;-------------------------------------------------------------------------------                                  
 UPD_PROGRESS
           pha                                 ;Save A
-          lda P_X                             ;Progress to be updated?
-          beq UP_EXIT                         ;No, exit
 
-          lda P_CS                            ;Check the step counter
+          lda P_CNTR                          ;Check the step counter
           beq UP_MOVE                         ;If zero, move M0
           
-          dec P_CS                            ;Decrement the counter                             
+          dec P_CNTR                          ;Decrement the counter                             
           jmp UP_EXIT                         ;Done with progress
 
 UP_MOVE   inc P_X                             ;Increment position
           lda P_X                             ;Get to A
           sta HPOSM0                          ;Update position
+          
+          lda P_STEP                          ;Reset counter
+          sta P_CNTR                          
           
           lda BLOCK_BUFFER+2                  ;Check for EOF
           and #128
@@ -403,8 +404,8 @@ SET_PROGRESS
           lda BLOCK_BUFFER+HB_P_LAST           ;Get last position
           sta HPOSM2                           ;Set it for M2
           lda BLOCK_BUFFER+HB_P_STEP           ;Get step code
-          sta P_C                              ;Save it
-          sta P_CS
+          sta P_CNTR                           ;Save it
+          sta P_STEP
 ;          
 ;Set graphics pattern for the missiles
           lda #(1+4+8+16+32)
@@ -424,8 +425,8 @@ SET_PROGRESS
 ;Progress data area
 ;===============================================================================
 P_X       .BYTE 0
-P_C       .BYTE 0
-P_CS      .BYTE 0
+P_CNTR    .BYTE 0
+P_STEP    .BYTE 0
 
 .ENDIF
 
