@@ -19,10 +19,19 @@
 ;one record shorter. The loader is compatible with XL/XE and 
 ;pre-XL/XE Atari computers.
 ;
-;Using the LDRTYPE symbol, this loader can be assembled 
-;to either boot (LDRTYPE=0) or binary (LDRTYPE=1) file.
-; 
 ;Assemble with the MADS cross-assembler
+;
+;Building the loader
+;-------------------
+; Symbol     Values
+; BUILD      0 B_BOOT   Build boot file
+;            1 B_XEX    Build binary load file
+;
+; LDR_CFG    0 C_PLAIN  Plain loader
+; LDR_CFG    1 C_PMG    Show progress with PMG          
+;
+; 
+
 ;
 ;Physical block format
 ;---------------------
@@ -61,16 +70,19 @@
 ;2022-04-11 Add support for showing loading progress using PMG
 ;===============================================================================
             
-
+;===============================================================================
+; Includes and EQUs
+;===============================================================================
           ICL "equates.asm"
-.IF LDRTYPE=0
+.IF BUILD=0
           OPT H-         
           LDR_START=[2048-23]
 .ELSE
           OPT H+,F+
           LDR_START=2048
 .ENDIF
-          
+
+;CIO channel 0          
           CIO0_OP   =$0342
           CIO0_STAT =$0343
           CIO0_BUFLO=$0344
@@ -79,7 +91,8 @@
           CIO0_LENHI=$0349
           CIO0_AUX1 =$034A
           CIO0_AUX2 =$034B
-          
+
+;Buffer Setup      
           SG_BUFRLO = 129
           SG_BUFRHI = 130
           SG_BFENLO = 131
@@ -87,7 +100,8 @@
           
           BUF_LEN   = [512+2+1+1]
           BLK_DOFS  = 3
-              
+
+;File format              
           HB_P_FIRST= 1+BLK_DOFS
           HB_P_LAST = 2+BLK_DOFS
           HB_P_STEP = 3+BLK_DOFS    
@@ -101,17 +115,36 @@
           HB_FLAGS  = 38+BLK_DOFS  
           HB_DATA   = 40+BLK_DOFS
           
-          
           TITLE_LEN = 30+2
+          
+;Miscellaneous          
           LDR_END = BLOCK_BUFFER+BUF_LEN-1
+          
+;Build configurations
+          B_BOOT  = 0
+          B_XEX   = 1
+          C_PLAIN = 0
+          C_PMG   = 1        
+          
+.IF LDR_CFG = C_PLAIN
+          BOOT_BLKS = 3
+          BOOT_SIZE = 384
+.ENDIF
+.IF LDR_CFG = C_PMG
+          BOOT_BLKS = 4
+          BOOT_SIZE = 512
+.ENDIF                                
 
+;===============================================================================
+; MAINLINE CODE
+;===============================================================================
           ORG LDR_START
 ;-------------------------------------------------------------------------------
 ; Boot header
 ;-------------------------------------------------------------------------------
-.IF LDRTYPE=0
+.IF BUILD=B_BOOT
 BOOTHEAD  .BYTE 0                 ;Boot flag 0
-          .BYTE 3                 ;3 blocks + 1 EOF block
+          .BYTE BOOT_BLKS         ;3 blocks + 1 EOF block
           .WORD [LDR_START]       ;Load address
           .WORD DO_RTS            ;Initialization address - just RTS
 ;-------------------------------------------------------------------------------
@@ -128,7 +161,7 @@ BOOTHEAD  .BYTE 0                 ;Boot flag 0
 ; X = 255 from above, loop down to 128.
 ;-------------------------------------------------------------------------------
 RELO_P2_L lda  1024-128,X
-          sta  LDR_START+384-128,X
+          sta  LDR_START+BOOT_SIZE-128,X
           dex  
           bmi  RELO_P2_L
 .ENDIF         
@@ -140,8 +173,10 @@ BLTOP     jsr GET_BLOCK           ;Get first block
           sta BUFRLO
           lda #>(BLOCK_BUFFER+HB_DATA)
           sta BUFRHI
-;          
+
+.IF LDR_CFG=C_PMG          
           jsr SET_PROGRESS        ;Set progress indicators
+.ENDIF          
           jsr SCREEN              ;Setup screen
           
 BL_START  
@@ -227,6 +262,9 @@ GET_BYTE  lda BUFRHI             ;Are we about to read a byte from next block?
           bne GB_DOGET           ;No, just get next
           
           jsr GET_BLOCK          ;Yes, then read the next block
+.IF LDR_CFG=C_PMG          
+          jsr UPD_PROGRESS       ;And then update progress
+.ENDIF          
           
 GB_DOGET  ldy #0
           lda (BUFRLO),Y
@@ -304,6 +342,7 @@ GB_NOSPECIAL                     ;Set the standard buffer range
 RUN_PROGRAM
           jmp (RUNAD)
 
+          
 ;===============================================================================
 ; Progress handling
 ; The progress indication works as follows:
@@ -313,7 +352,49 @@ RUN_PROGRAM
 ; Movement is controlled by movement code. In general, the movement code
 ; indicates how far M0 moves after each block.
 ;===============================================================================
+.IF LDR_CFG = C_PMG
+;-------------------------------------------------------------------------------
+; Update progress after each block
+;-------------------------------------------------------------------------------                                  
+UPD_PROGRESS
+          pha                                 ;Save A
+          lda P_X                             ;Progress to be updated?
+          beq UP_EXIT                         ;No, exit
+
+          lda P_CS                            ;Check the step counter
+          beq UP_MOVE                         ;If zero, move M0
+          
+          dec P_CS                            ;Decrement the counter                             
+          jmp UP_EXIT                         ;Done with progress
+
+UP_MOVE   inc P_X                             ;Increment position
+          lda P_X                             ;Get to A
+          sta HPOSM0                          ;Update position
+          
+          lda BLOCK_BUFFER+2                  ;Check for EOF
+          and #128
+          beq UP_EXIT                         ;No EOF, just skip
+          
+UP_EOF    lda #0                              ;Remove the PMG
+          sta GRAFM
+          sta HPOSM0
+          sta HPOSM1
+          sta HPOSM2
+          sta PCOLR0
+          sta PCOLR1
+          sta PCOLR2
+          sta PRIOR
+
+UP_EXIT   pla                                 ;Restore A
+          rts
+
+
+;-------------------------------------------------------------------------------
+; Initialize progress
+;-------------------------------------------------------------------------------
 SET_PROGRESS          
+          pha
+;          
 ;Set positions of the Ms
           lda BLOCK_BUFFER+HB_P_FIRST          ;Get first position
           sta P_X                              ;Save it
@@ -323,6 +404,8 @@ SET_PROGRESS
           sta HPOSM2                           ;Set it for M2
           lda BLOCK_BUFFER+HB_P_STEP           ;Get step code
           sta P_C                              ;Save it
+          sta P_CS
+;          
 ;Set graphics pattern for the missiles
           lda #(1+4+8+16+32)
           sta GRAFM
@@ -333,24 +416,18 @@ SET_PROGRESS
           sta PCOLR2    
 ;Switch the PMG on
           lda #1
-;         sta GRACTL
           sta PRIOR
-          sta GPRIOR
-          
-          lda RTCLOK+2
-L1        cmp RTCLOK+2
-          beq L1    
-          
-          lda RTCLOK+2
-L2        cmp RTCLOK+2
-          beq L2                          
-                                                   
+;
+          pla          
           rts
 ;===============================================================================
-;Main data area
+;Progress data area
 ;===============================================================================
 P_X       .BYTE 0
 P_C       .BYTE 0
+P_CS      .BYTE 0
+
+.ENDIF
 
 ;===============================================================================
 ; Error handling
@@ -436,7 +513,7 @@ BLOCK_BUFFER
 ;===============================================================================
 ; RUN segment
 ;===============================================================================
-.IF LDRTYPE=1
+.IF BUILD=B_XEX
           RUN BLTOP
           
 .ENDIF          
