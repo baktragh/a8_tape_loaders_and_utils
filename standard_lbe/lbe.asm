@@ -10,9 +10,9 @@
 ;copyrights. Everyone is free to use, modify, republish, sell or give away this
 ;work without prior consent from anybody.
 ;
-
-;Notes for develpoers
-;--------------------
+;
+;Storing as tape boot file
+;-------------------------
 ;This loader uses the "trailing EOF record trick" - the last 128 bytes of the
 ;loader are in the EOF block. These 128 bytes are moved from the cassette
 ;buffer to the intended memory location. The trick allows this loader to be
@@ -30,9 +30,6 @@
 ; LDR_CFG    0 C_PLAIN  Plain loader
 ; LDR_CFG    1 C_PMG    Show progress with PMG          
 ;
-; 
-
-;
 ;Physical block format
 ;---------------------
 ; Blocks are 512+2+1+1 bytes long
@@ -45,7 +42,7 @@
 ; Checksum (Standard SIO checksum)
 ;
 ;Logical file format
-;--------------------
+;-------------------
 ;  0: Eye-catcher ('L')
 ;  1: Progress indicator initial position
 ;  2: Progress indicator final position
@@ -62,10 +59,10 @@
 ;     2 bytes first address
 ;     2 bytes last address
 ;     Or 0xFF 0xFF 0xFE 0xFE EOF indicator
-;     Bytes of the segment 
+;     Bytes of the segment
 ;
-;Maintence log
-;-------------
+;Maintenance log
+;---------------
 ;2022-03-04 Initial version
 ;2022-04-11 Add support for showing loading progress using PMG
 ;===============================================================================
@@ -349,7 +346,7 @@ RUN_PROGRAM
 ; M1 and M2 indicate first and last position
 ; M0 indicates the actual progress by moving from M1 to M2
 ; The positions are set by an authoring tool
-; Movement is controlled by movement code. In general, the movement code
+; Movement is controlled by movement counter. In general, the movement counter
 ; indicates how far M0 moves after each block.
 ;===============================================================================
 .IF LDR_CFG = C_PMG
@@ -460,7 +457,7 @@ SCREEN
           lda BLOCK_BUFFER+HB_BG  ;Set background
           sta COLOR2
           
-          lda BLOCK_BUFFER+HB_LUM ;Set luma
+          lda BLOCK_BUFFER+HB_LUM ;Set luminance
           and #HB_LUM_MASK
           sta COLOR1
           
@@ -490,7 +487,7 @@ SCREEN
 ;-------------------------------------------------------------------------------
 STARTUP   ldx #0                  ;Reset cold start flag
           stx COLDST
-          inx                     ;Indicate disk boot succeded
+          inx                     ;Indicate disk boot succeeded
           stx BOOT
           
           lda #<DINI              ;Setup DOSINI
