@@ -21,6 +21,7 @@
 ;2019-07-18 Initial version 1.0
 ;2019-08-12 Shortening based  and updates based on suggestions of
 ;AtariAge forum members dmsc,xxl,phaeron. Version 1.1
+;2022-06-30 Attract suppresion option
 ;===============================================================================
 
           .INCLUDE "equates.asm"
@@ -101,6 +102,10 @@ LOADER_CORE_BEGIN
 GETSEG    lda #255                 ;Set fake INIT vector to $FFFF (fake value)
           sta INITAD
           sta INITAD+1
+          
+          lda CONFIG_ATRACT        ;Attract allowance
+          bne GS_STRTA             ;Yes, skip
+          sta ATRACT               ;Reset ATRACT
 ;-------------------------------------------------------------------------------
 ; Get segment header
 ;-------------------------------------------------------------------------------
@@ -303,7 +308,7 @@ DO_RTS    rts
 
 ;===============================================================================
 ; Program title and configuration bytes
-; Defaults: 148,202,1,0
+; Defaults: 148,202,1,0,1
 ;===============================================================================
 CONFIG_EYE      .BYTE "@CBL"          ;Eye-catcher
 CONFIG_TITLE    .BYTE 125             ;Clear screen
@@ -313,6 +318,7 @@ CONFIG_BG       .BYTE 148             ;Background color
 CONFIG_FG       .BYTE 202             ;Foreground color                  
 CONFIG_SNDR     .BYTE 1               ;SOUNDR value                  
 CONFIG_CRSR     .BYTE 0               ;Cursor on-off
+CONFIG_ATRACT   .BYTE 1               ;Atract mode allowance 
 ;===============================================================================
 ; RUN segment
 ;===============================================================================
