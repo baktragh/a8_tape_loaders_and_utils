@@ -54,6 +54,7 @@
 ; 37: Background color
 ; 38: .... 1111 Foreground luminance
 ;     1... .... Cursor OFF flag
+;     .1.. .... ATRACT suppresion flag 
 ; 39: Reserve 
 ; 40: Segment block(s)
 ;     2 bytes first address
@@ -65,6 +66,7 @@
 ;---------------
 ;2022-03-04 Initial version
 ;2022-04-11 Add support for showing loading progress using PMG
+;2022-07-21 Support for ATRACT mode suppression 
 ;===============================================================================
             
 ;===============================================================================
@@ -108,7 +110,8 @@
           HB_BG     = 37+BLK_DOFS
           HB_LUM    = 38+BLK_DOFS
           HB_LUM_MASK = $0F
-          HB_FLG_MASK = $F0
+          HB_FLG_CRSIN = $80
+          HB_FLG_NOATRACT = $40
           HB_FLAGS  = 38+BLK_DOFS  
           HB_DATA   = 40+BLK_DOFS
           
@@ -283,7 +286,13 @@ GB_DOGET  ldy #0
 ;===============================================================================
 GET_BLOCK pha
           
-          lda #$60               ;Cassette
+          lda W_FLAGS             ;Check flags
+          and #HB_FLG_NOATRACT    ;Suppress ATRACT?
+          beq GB_SIOSET           ;No, skip
+          lda #0                  ;Yes, reset ATRACT
+          sta ATRACT
+          
+GB_SIOSET lda #$60               ;Cassette
           sta DDEVIC
           lda #0                 
           sta DUNIT              ;Zero unit
@@ -464,9 +473,12 @@ SCREEN
           lda BLOCK_BUFFER+HB_SOUNDR ;Set SOUNDR
           sta SOUNDR
           
-          lda BLOCK_BUFFER+HB_FLAGS ;Set cursor inhibition
-          and #HB_FLG_MASK
+          lda BLOCK_BUFFER+HB_FLAGS ;Copy flags byte
+          sta W_FLAGS
+          
+          and #HB_FLG_CRSIN         ;Inhibit cursor when needed
           sta CRSINH
+         
 
 ;Program title
           lda #9                  ;Requesting PRINT
@@ -501,6 +513,11 @@ DINI      lda #<BLTOP             ;DOSINI sets DOSVEC
           lda #>BLTOP
           sta DOSVEC+1
 DO_RTS    rts
+
+;===============================================================================
+;General data area
+;===============================================================================
+W_FLAGS   .BYTE 0
 
 ;===============================================================================
 ; BUFFER
