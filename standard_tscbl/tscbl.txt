@@ -26,21 +26,28 @@ of the computer.
 Customization
 -------------
 TSCBL can be customized by changing bytes close to the end of the loader
-code. 
-Navigate to the eye-catcher '@CBL' and note its offset as 0.
-You can then change bytes as follows:
+code. Navigate to the eye-catcher '@CBL' and note its offset as 0.
+You can then change the subsequent bytes as follows:
 
-Offset (decimal)   Length   Description
+Offset
+(decimal) Length   Default Description
 --------------------------------------------------------------------------------  
- 0                      4   '@CBL' eye-catcher
- 4                      1   Clear screen character #125      
- 5                     34   File name (ATASCII)
-39                      1   End of line #155
-40                      1   Background color
-41                      1   Foreground color (luminance)
-42                      1   SOUNDR (Set to 0 for silent I/O)
-43                      1   CRSINH (Set to 1 to hide cursor)  
+ 0             4   -       '@CBL' eye-catcher
+ 4             1   -        Clear screen character #125      
+ 5            34   -        File name (ATASCII)
+39             1   -        End of line #155
+40             1   148      Background color
+41             1   202      Foreground color (luminance)
+42             1     1      SOUNDR (Set to 0 for silent I/O)
+43             1     0      CRSINH (Set to 1 to hide cursor)  
+44             1     0      ATRACT Suppression (Set to 1 to suppress)
 --------------------------------------------------------------------------------
+
+Note:
+The ATRACT mode supression sets the ATRACT register to 0 before loading
+of each binary file segment. If a segment is too long, the suppression
+will not work. To circumvent this limitation, split such a long segment
+into two or more small segments.
 
 Segments
 --------

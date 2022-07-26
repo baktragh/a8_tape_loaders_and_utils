@@ -22,6 +22,7 @@
 ;2019-08-12 Shortening based  and updates based on suggestions of
 ;AtariAge forum members dmsc,xxl,phaeron. Version 1.1
 ;2022-06-30 Attract suppresion option
+;2022-07-25 Attract suppression option inverted.
 ;===============================================================================
 
           .INCLUDE "equates.asm"
@@ -103,8 +104,9 @@ GETSEG    lda #255                 ;Set fake INIT vector to $FFFF (fake value)
           sta INITAD
           sta INITAD+1
           
-          lda CONFIG_ATRACT        ;Attract allowance
-          bne GS_STRTA             ;Yes, skip
+          lda CONFIG_NOATRACT      ;Attract suppression on?
+          beq GS_STRTA             ;Yes, skip
+          and #0                   ;Zero A
           sta ATRACT               ;Reset ATRACT
 ;-------------------------------------------------------------------------------
 ; Get segment header
@@ -318,7 +320,7 @@ CONFIG_BG       .BYTE 148             ;Background color
 CONFIG_FG       .BYTE 202             ;Foreground color                  
 CONFIG_SNDR     .BYTE 1               ;SOUNDR value                  
 CONFIG_CRSR     .BYTE 0               ;Cursor on-off
-CONFIG_ATRACT   .BYTE 1               ;Atract mode allowance 
+CONFIG_NOATRACT .BYTE 0               ;Atract mode suppression 
 ;===============================================================================
 ; RUN segment
 ;===============================================================================
