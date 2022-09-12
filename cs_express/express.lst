@@ -1,0 +1,842 @@
+mads 2.1.0 build 8 (23 Dec 19)
+Source: express.asm
+     1 				;===============================================================================
+     2 				;TURBO 2000 Express Loader
+     3 				;
+     4 				; - Binary loader based on Czechoslovak Turbo 2000 system
+     5 				; - Loading of segmented binary files
+     6 				; - Pilot tone needed only after INIT segments
+     7
+     8 				; Block format
+     9 				; (0)    ID Byte .... 0101  Turbo 2000 Express Loader signature
+    10 				;                1... ....  This is the last block of file
+    11 				;               .1..  ....  This block holds INIT segment
+    12 				; (1..4) Buffer range  (BUFLO,BUFHI,BFENLO,BFENHI)
+    13 				; (5..x) Data bytes    (given by the buffer range)
+    14 				; (x+1)  XOR based checksum (all bytes before)
+    15 				;
+    16 				; What bytes are read is given by a "state" of the loader that is
+    17 				; held in the LTEMP variable
+    18 				;
+    19 				; STATE_ID     - Reading ID byte (initial state)
+    20 				; STATE_BUFLO  - Reading BUFLO
+    21 				; STATE_BUFHI  - Reading BUFHI
+    22 				; STATE_BFENLO - Reading BFENLO
+    23 				; STATE_BFENHI - Reading BFENHI
+    24 				; STATE_DATA   - Reading segment data and checksum
+    25 				;
+    26 				; Assemble with MADS
+    27 				;===============================================================================
+    28
+    29 				            OPT H-
+    30 				            ICL "equates.asm"
+Source: equates.asm
+     1 = 0000			ICHID       = 0
+     2 = 0001			ICDNO       = 1
+     3 = 0002			ICCOM       = 2
+     4 = 0003			ICSTA       = 3
+     5 = 0004			ICBAL       = 4
+     6 = 0005			ICBAH       = 5
+     7 = 0006			ICPTL       = 6
+     8 = 0007			ICPTH       = 7
+     9 = 0008			ICBLL       = 8
+    10 = 0009			ICBLH       = 9
+    11 = 000A			ICAX1       = 10
+    12 = 000B			ICAX2       = 11
+    13 = 000C			ICAX3       = 12
+    14 = 000D			ICAX4       = 13
+    15 = 000E			ICAX5       = 14
+    16 = 000F			ICAX6       = 15
+    17 				; 
+    18 				; DISPLAY LIST EQUATES
+    19 				; 
+    20 = 0080			ADLI        = 128
+    21 = 0040			AVB         = 64
+    22 = 0040			ALMS        = 64
+    23 = 0020			AVSCR       = 32
+    24 = 0010			AHSCR       = 16
+    25 = 0001			AJMP        = 1
+    26 = 0000			AEMPTY1     = 0
+    27 = 0010			AEMPTY2     = 16
+    28 = 0020			AEMPTY3     = 32
+    29 = 0030			AEMPTY4     = 48
+    30 = 0040			AEMPTY5     = 64
+    31 = 0050			AEMPTY6     = 80
+    32 = 0060			AEMPTY7     = 96
+    33 = 0070			AEMPTY8     = 112
+    34 				; 
+    35 				; OS VARIABLES FOR XL/XE
+    36 				; 
+    37 				; PAGE 0
+    38 				; 
+    39 = 0001			NGFLAG      = 1
+    40 = 0002			CASINI      = 2
+    41 = 0004			RAMLO       = 4
+    42 = 0006			TRAMSZ      = 6
+    43 = 0007			CMCMD       = 7
+    44 = 0008			WARMST      = 8
+    45 = 0009			BOOT        = 9
+    46 = 000A			DOSVEC      = 10
+    47 = 000C			DOSINI      = 12
+    48 = 000E			APPMHI      = 14
+    49 = 0010			POKMSK      = 16
+    50 = 0011			BRKKEY      = 17
+    51 = 0012			RTCLOK      = 18
+    52 = 0015			BUFADR      = 21
+    53 = 0017			ICCOMT      = 23
+    54 = 0018			DSKFMS      = 24
+    55 = 001A			DSKUTL      = 26
+    56 = 001C			ABUFPT      = 28
+    57 = 0020			ICHIDZ      = 32
+    58 = 0021			ICDNOZ      = 33
+    59 = 0022			ICCOMZ      = 34
+    60 = 0023			ICSTAZ      = 35
+    61 = 0024			ICBALZ      = 36
+    62 = 0025			ICBAHZ      = 37
+    63 = 0026			ICPTLZ      = 38
+    64 = 0027			ICPTHZ      = 39
+    65 = 0028			ICBLLZ      = 40
+    66 = 0029			ICBLHZ      = 41
+    67 = 002A			ICAX1Z      = 42
+    68 = 002B			ICAX2Z      = 43
+    69 = 002C			ICAX3Z      = 44
+    70 = 002D			ICAX4Z      = 45
+    71 = 002E			ICAX5Z      = 46
+    72 = 002F			ICAX6Z      = 47
+    73 = 0030			STATUS      = 48
+    74 = 0031			CHKSUM      = 49
+    75 = 0032			BUFRLO      = 50
+    76 = 0033			BUFRHI      = 51
+    77 = 0034			BFENLO      = 52
+    78 = 0035			BFENHI      = 53
+    79 = 0036			LTEMP       = 54
+    80 = 0038			BUFRFL      = 56
+    81 = 0039			RECVDN      = 57
+    82 = 003A			XMTDON      = 58
+    83 = 003B			CHKSNT      = 59
+    84 = 003C			NOCKSM      = 60
+    85 = 003D			BPTR        = 61
+    86 = 003E			FTYPE       = 62
+    87 = 003F			FEOF        = 63
+    88 = 0040			FREQ        = 64
+    89 = 0041			SOUNDR      = 65
+    90 = 0042			CRITIC      = 66
+    91 = 0043			FMSZPG      = 67
+    92 = 004A			ZCHAIN      = 74
+    93 = 004C			DSTAT       = 76
+    94 = 004D			ATRACT      = 77
+    95 = 004E			DRKMSK      = 78
+    96 = 004F			COLRSH      = 79
+    97 = 0050			TEMP        = 80
+    98 = 0051			HOLD1       = 81
+    99 = 0052			LMARGN      = 82
+   100 = 0053			RMARGN      = 83
+   101 = 0054			ROWCRS      = 84
+   102 = 0055			COLCRS      = 85
+   103 = 0057			DINDEX      = 87
+   104 = 0058			SAVMSC      = 88
+   105 = 005A			OLDROW      = 90
+   106 = 005B			OLDCOL      = 91
+   107 = 005D			OLDCHR      = 93
+   108 = 005E			OLDADR      = 94
+   109 = 0060			FKDEF       = 96
+   110 = 0062			PALNTS      = 98
+   111 = 0063			LOGCOL      = 99
+   112 = 0064			ADRESS      = 100
+   113 = 0066			MLTTMP      = 102
+   114 = 0068			SAVADR      = 104
+   115 = 006A			RAMTOP      = 106
+   116 = 006B			BUFCNT      = 107
+   117 = 006C			BUFSTR      = 108
+   118 = 006E			BITMSK      = 110
+   119 = 006F			SHFAMT      = 111
+   120 = 0070			ROWAC       = 112
+   121 = 0072			COLAC       = 114
+   122 = 0074			ENDPT       = 116
+   123 = 0076			DELTAR      = 118
+   124 = 0077			DELTAC      = 119
+   125 = 0079			KEYDEF      = 121
+   126 = 007B			SWPFLG      = 123
+   127 = 007C			HOLDCH      = 124
+   128 = 007D			INSDAT      = 125
+   129 = 007E			COUNTR      = 126
+   130 = 0080			LOMEM       = 128
+   131 				; 
+   132 				; PAGE 2
+   133 				; 
+   134 = 0200			VDSLST      = 512
+   135 = 0202			VPRCED      = 514
+   136 = 0204			VINTER      = 516
+   137 = 0206			VBREAK      = 518
+   138 = 0208			VKEYBD      = 520
+   139 = 020A			VSERIN      = 522
+   140 = 020C			VSEROR      = 524
+   141 = 020E			VSEROC      = 526
+   142 = 0210			VTIMR1      = 528
+   143 = 0212			VTIMR2      = 530
+   144 = 0214			VTIMR4      = 532
+   145 = 0216			VIMIRQ      = 534
+   146 = 0218			CDTMV1      = 536
+   147 = 021A			CDTMV2      = 538
+   148 = 021C			CDTMV3      = 540
+   149 = 021E			CDTMV4      = 542
+   150 = 0220			CDTMV5      = 544
+   151 = 0222			VVBLKI      = 546
+   152 = 0224			VVBLKD      = 548
+   153 = 0226			CDTMA1      = 550
+   154 = 0228			CDTMA2      = 552
+   155 = 022A			CDTMF3      = 554
+   156 = 022B			SRTIMR      = 555
+   157 = 022C			CDTMF4      = 556
+   158 = 022D			INTEMP      = 557
+   159 = 022E			CDTMF5      = 558
+   160 = 022F			SDMCTL      = 559
+   161 = 0230			SDLSTL      = 560
+   162 = 0231			SDLSTH      = 561
+   163 = 0232			SSKCTL      = 562
+   164 = 0233			SPARE       = 563
+   165 = 0234			LPENH       = 564
+   166 = 0235			LPENV       = 565
+   167 = 0236			BRKKY       = 566
+   168 = 0238			VPIRQ       = 568
+   169 = 023A			CDEVIC      = 570
+   170 = 023B			CCOMND      = 571
+   171 = 023C			CAUX1       = 572
+   172 = 023D			CAUX2       = 573
+   173 = 023E			TMPSIO      = 574
+   174 = 023F			ERRFLG      = 575
+   175 = 0240			DFLAGS      = 576
+   176 = 0241			DBSECT      = 577
+   177 = 0242			BOOTAD      = 578
+   178 = 0244			COLDST      = 580
+   179 = 0245			RECLEN      = 581
+   180 = 0246			DSKTIM      = 582
+   181 = 0247			PDVMSK      = 583
+   182 = 0248			SHPDVS      = 584
+   183 = 0249			PDMSK       = 585
+   184 = 024A			RELADR      = 586
+   185 = 024C			PPTMPA      = 588
+   186 = 024D			PPTMPX      = 589
+   187 = 026B			CHSALT      = 619
+   188 = 026C			VSFLAG      = 620
+   189 = 026D			KEYDIS      = 621
+   190 = 026E			FINE        = 622
+   191 = 026F			GPRIOR      = 623
+   192 = 0270			PADDL0      = 624
+   193 = 0271			PADDL1      = 625
+   194 = 0272			PADDL2      = 626
+   195 = 0273			PADDL3      = 627
+   196 = 0274			PADDL4      = 628
+   197 = 0275			PADDL5      = 629
+   198 = 0276			PADDL6      = 630
+   199 = 0277			PADDL7      = 631
+   200 = 0278			STICK0      = 632
+   201 = 0279			STICK1      = 633
+   202 = 027A			STICK2      = 634
+   203 = 027B			STICK3      = 635
+   204 = 027C			PTRIG0      = 636
+   205 = 027D			PTRIG1      = 637
+   206 = 027E			PTRIG2      = 638
+   207 = 027F			PTRIG3      = 639
+   208 = 0280			PTRIG4      = 640
+   209 = 0281			PTRIG5      = 641
+   210 = 0282			PTRIG6      = 642
+   211 = 0283			PTRIG7      = 643
+   212 = 0284			STRIG0      = 644
+   213 = 0285			STRIG1      = 645
+   214 = 0286			STRIG2      = 646
+   215 = 0287			STRIG3      = 647
+   216 = 0288			HIBYTE      = 648
+   217 = 0289			WMODE       = 649
+   218 = 028A			BLIM        = 650
+   219 = 028B			IMASK       = 651
+   220 = 028C			JVECK       = 652
+   221 = 028E			NEWADR      = 654
+   222 = 0290			TXTROW      = 656
+   223 = 0291			TXTCOL      = 657
+   224 = 0293			TINDEX      = 659
+   225 = 0294			TXTMSC      = 660
+   226 = 0296			TXTOLD      = 662
+   227 = 029C			CRETRY      = 668
+   228 = 029D			HOLD3       = 669
+   229 = 029E			SUBTMP      = 670
+   230 = 029F			HOLD2       = 671
+   231 = 02A0			DMASK       = 672
+   232 = 02A1			TMPLBT      = 673
+   233 = 02A2			ESCFLG      = 674
+   234 = 02A3			TABMAP      = 675
+   235 = 02B2			LOGMAP      = 690
+   236 = 02B6			INVFLG      = 694
+   237 = 02B7			FILFLG      = 695
+   238 = 02B8			TMPROW      = 696
+   239 = 02B9			TMPCOL      = 697
+   240 = 02BB			SCRFLG      = 699
+   241 = 02BC			HOLD4       = 700
+   242 = 02BD			DRETRY      = 701
+   243 = 02BE			SHFLOC      = 702
+   244 = 02BF			BOTSCR      = 703
+   245 = 02C0			PCOLR0      = 704
+   246 = 02C1			PCOLR1      = 705
+   247 = 02C2			PCOLR2      = 706
+   248 = 02C3			PCOLR3      = 707
+   249 = 02C4			COLOR0      = 708
+   250 = 02C5			COLOR1      = 709
+   251 = 02C6			COLOR2      = 710
+   252 = 02C7			COLOR3      = 711
+   253 = 02C8			COLOR4      = 712
+   254 = 02C9			RUNADR      = 713
+   255 = 02CB			HIUSED      = 715
+   256 = 02CD			ZHIUSE      = 717
+   257 = 02CF			GBYTEA      = 719
+   258 = 02D1			LOADAD      = 721
+   259 = 02D3			ZLOADA      = 723
+   260 = 02D5			DSCTLN      = 725
+   261 = 02D7			ACMISR      = 727
+   262 = 02D9			KRPDER      = 729
+   263 = 02DA			KEYREP      = 730
+   264 = 02DB			NOCLIK      = 731
+   265 = 02DC			HELPFG      = 732
+   266 = 02DD			DMASAV      = 733
+   267 = 02DE			PBPNT       = 734
+   268 = 02DF			PBUFSZ      = 735
+   269 = 02E0			RUNAD       = 736
+   270 = 02E2			INITAD      = 738
+   271 = 02E4			RAMSIZ      = 740
+   272 = 02E5			MEMTOP      = 741
+   273 = 02E7			MEMLO       = 743
+   274 = 02E9			HNDLOD      = 745
+   275 = 02EA			DVSTAT      = 746
+   276 = 02EE			CBAUDL      = 750
+   277 = 02EF			CBAUDH      = 751
+   278 = 02F0			CRSINH      = 752
+   279 = 02F1			KEYDEL      = 753
+   280 = 02F2			CH1         = 754
+   281 = 02F3			CHACT       = 755
+   282 = 02F4			CHBAS       = 756
+   283 = 02F5			NEWROW      = 757
+   284 = 02F6			NEWCOL      = 758
+   285 = 02F8			ROWINC      = 760
+   286 = 02F9			COLINC      = 761
+   287 = 02FA			CHAR        = 762
+   288 = 02FB			ATACHR      = 763
+   289 = 02FC			CH          = 764
+   290 = 02FD			FILDAT      = 765
+   291 = 02FE			DSPFLG      = 766
+   292 = 02FF			SSFLAG      = 767
+   293 				; 
+   294 				; PAGE 3
+   295 				; 
+   296 = 0300			DDEVIC      = 768
+   297 = 0301			DUNIT       = 769
+   298 = 0302			DCOMND      = 770
+   299 = 0303			DSTATS      = 771
+   300 = 0304			DBUFLO      = 772
+   301 = 0305			DBUFHI      = 773
+   302 = 0306			DTIMLO      = 774
+   303 = 0307			DUNUSE      = 775
+   304 = 0308			DBYTLO      = 776
+   305 = 0309			DBYTHI      = 777
+   306 = 030A			DAUX1       = 778
+   307 = 030B			DAUX2       = 779
+   308 = 030C			TIMER1      = 780
+   309 = 030E			ADDCOR      = 782
+   310 = 030F			CASFLG      = 783
+   311 = 0310			TIMER2      = 784
+   312 = 0312			TEMP1       = 786
+   313 = 0314			TEMP2       = 788
+   314 = 0315			TEMP3       = 789
+   315 = 0316			SAVIO       = 790
+   316 = 0317			TIMFLG      = 791
+   317 = 0318			STACKP      = 792
+   318 = 0319			TSTAT       = 793
+   319 = 031A			HATABS      = 794
+   320 = 033D			PUPBT1      = 829
+   321 = 033E			PUPBT2      = 830
+   322 = 033F			PUPBT3      = 831
+   323 = 0340			IOCB0       = 832
+   324 = 0350			IOCB1       = 848
+   325 = 0360			IOCB2       = 864
+   326 = 0370			IOCB3       = 880
+   327 = 0380			IOCB4       = 896
+   328 = 0390			IOCB5       = 912
+   329 = 03A0			IOCB6       = 928
+   330 = 03B0			IOCB7       = 944
+   331 = 03C0			PRNBUF      = 960
+   332 = 03E8			SUPERF      = 1000
+   333 = 03E9			CKEY        = 1001
+   334 = 03EA			CASSBT      = 1002
+   335 = 03EB			CARTCK      = 1003
+   336 = 03EC			DERRF       = 1004
+   337 = 03ED			ACMVAR      = 1005
+   338 = 03F8			BASICF      = 1016
+   339 = 03F9			MINTLK      = 1017
+   340 = 03FA			GINTLK      = 1018
+   341 = 03FB			CHLINK      = 1019
+   342 = 03FD			CASBUF      = 1021
+   343 				; 
+   344 				; HARDWARE REGISTERS
+   345 				; 
+   346 				; GTIA
+   347 				; 
+   348 = D000			M0PF        = 53248
+   349 = D000			HPOSP0      = 53248
+   350 = D001			M1PF        = 53249
+   351 = D001			HPOSP1      = 53249
+   352 = D002			M2PF        = 53250
+   353 = D002			HPOSP2      = 53250
+   354 = D003			M3PF        = 53251
+   355 = D003			HPOSP3      = 53251
+   356 = D004			P0PF        = 53252
+   357 = D004			HPOSM0      = 53252
+   358 = D005			P1PF        = 53253
+   359 = D005			HPOSM1      = 53253
+   360 = D006			P2PF        = 53254
+   361 = D006			HPOSM2      = 53254
+   362 = D007			P3PF        = 53255
+   363 = D007			HPOSM3      = 53255
+   364 = D008			M0PL        = 53256
+   365 = D008			SIZEP0      = 53256
+   366 = D009			M1PL        = 53257
+   367 = D009			SIZEP1      = 53257
+   368 = D00A			M2PL        = 53258
+   369 = D00A			SIZEP2      = 53258
+   370 = D00B			M3PL        = 53259
+   371 = D00B			SIZEP3      = 53259
+   372 = D00C			P0PL        = 53260
+   373 = D00C			SIZEM       = 53260
+   374 = D00D			P1PL        = 53261
+   375 = D00D			GRAFP0      = 53261
+   376 = D00E			P2PL        = 53262
+   377 = D00E			GRAFP1      = 53262
+   378 = D00F			P3PL        = 53263
+   379 = D00F			GRAFP2      = 53263
+   380 = D010			TRIG0       = 53264
+   381 = D010			GRAFP3      = 53264
+   382 = D011			TRIG1       = 53265
+   383 = D011			GRAFM       = 53265
+   384 = D012			TRIG2       = 53266
+   385 = D012			COLPM0      = 53266
+   386 = D013			TRIG3       = 53267
+   387 = D013			COLPM1      = 53267
+   388 = D014			PAL         = 53268
+   389 = D014			COLPM2      = 53268
+   390 = D015			COLPM3      = 53269
+   391 = D016			COLPF0      = 53270
+   392 = D017			COLPF1      = 53271
+   393 = D018			COLPF2      = 53272
+   394 = D019			COLPF3      = 53273
+   395 = D01A			COLBK       = 53274
+   396 = D01B			PRIOR       = 53275
+   397 = D01C			VDELAY      = 53276
+   398 = D01D			GRACTL      = 53277
+   399 = D01E			HITCLR      = 53278
+   400 = D01F			CONSOL      = 53279
+   401 				; 
+   402 				; POKEY
+   403 				; 
+   404 = D200			POT0        = 53760
+   405 = D200			AUDF1       = 53760
+   406 = D201			POT1        = 53761
+   407 = D201			AUDC1       = 53761
+   408 = D202			POT2        = 53762
+   409 = D202			AUDF2       = 53762
+   410 = D203			POT3        = 53763
+   411 = D203			AUDC2       = 53763
+   412 = D204			POT4        = 53764
+   413 = D204			AUDF3       = 53764
+   414 = D205			POT5        = 53765
+   415 = D205			AUDC3       = 53765
+   416 = D206			POT6        = 53766
+   417 = D206			AUDF4       = 53766
+   418 = D207			POT7        = 53767
+   419 = D207			AUDC4       = 53767
+   420 = D208			ALLPOT      = 53768
+   421 = D208			AUDCTL      = 53768
+   422 = D209			KBCODE      = 53769
+   423 = D209			STIMER      = 53769
+   424 = D20A			RANDOM      = 53770
+   425 = D20A			SKREST      = 53770
+   426 = D20B			POTGO       = 53771
+   427 = D20D			SERIN       = 53773
+   428 = D20D			SEROUT      = 53773
+   429 = D20E			IRQST       = 53774
+   430 = D20E			IRQEN       = 53774
+   431 = D20F			SKSTAT      = 53775
+   432 = D20F			SKCTL       = 53775
+   433 				; 
+   434 				; PIA
+   435 				; 
+   436 = D300			PORTA       = 54016
+   437 = D301			PORTB       = 54017
+   438 = D302			PACTL       = 54018
+   439 = D303			PBCTL       = 54019
+   440 				; 
+   441 				; ANTIC
+   442 				; 
+   443 = D400			DMACLT      = 54272
+   444 = D401			CHACTL      = 54273
+   445 = D402			DLISTL      = 54274
+   446 = D403			DLISTH      = 54275
+   447 = D404			HSCROL      = 54276
+   448 = D405			VSCROL      = 54277
+   449 = D407			PMBASE      = 54279
+   450 = D409			CHBASE      = 54281
+   451 = D40A			WSYNC       = 54282
+   452 = D40B			VCOUNT      = 54283
+   453 = D40C			PENH        = 54284
+   454 = D40D			PENV        = 54285
+   455 = D40E			NMIEN       = 54286
+   456 = D40F			NMIST       = 54287
+   457 = D40F			NMIRES      = 54287
+   458 				; 
+   459 				; FLOATING POINT ROUTINES
+   460 				; 
+   461 = D800			AFP         = 55296
+   462 = D8E6			FASC        = 55526
+   463 = D9AA			IFP         = 55722
+   464 = D9D2			FPI         = 55762
+   465 = DA44			ZFR0        = 55876
+   466 = DA46			ZF1         = 55878
+   467 = DA60			FSUB        = 55904
+   468 = DA66			FADD        = 55910
+   469 = DADB			FMUL        = 56027
+   470 = DB28			FDIV        = 56104
+   471 = DD40			PLYEVL      = 56640
+   472 = DD89			FLD0R       = 56713
+   473 = DD8D			FLD0P       = 56717
+   474 = DD98			FLD1R       = 56728
+   475 = DD9C			FLD1P       = 56732
+   476 = DDA7			FSTOR       = 56743
+   477 = DDAB			FSTOP       = 56747
+   478 = DDB6			FMOVE       = 56758
+   479 = DDC0			EXP         = 56768
+   480 = DDCC			EXP10       = 56780
+   481 = DECD			LOG         = 57037
+   482 = DED1			LOG10       = 57041
+   483 				; 
+   484 				; ROM VECTORS
+   485 				; 
+   486 = E453			DSKINV      = 58451
+   487 = E456			CIOV        = 58454
+   488 = E459			SIOV        = 58457
+   489 = E45C			SETVBV      = 58460
+   490 = E45F			SYSVBV      = 58463
+   491 = E462			XITVBV      = 58466
+   492 = E465			SIOINV      = 58469
+   493 = E468			SENDEV      = 58472
+   494 = E46B			INTINV      = 58475
+   495 = E46E			CIOINV      = 58478
+   496 = E471			SELFSV      = 58481
+   497 = E474			WARMSV      = 58484
+   498 = E477			COLDSV      = 58487
+   499 = E47A			RBLOKV      = 58490
+   500 = E47D			CSOPIV      = 58493
+   501 = E480			PUPDIV      = 58496
+   502 = E483			SELFTSV     = 58499
+   503 = E486			PENTV       = 58502
+   504 = E489			PHUNLV      = 58505
+   505 = E48C			PHINIV      = 58508
+   506 = E48F			GPDVV       = 58511
+   507 				;
+   508 				; Code equates
+   509 				;
+   510 = 0400			L0400       = 1024
+   511 = 040B			L040B       = 1035
+   512 = 040C			L040C       = 1036
+   513 = 040D			L040D       = 1037
+   514 = 040E			L040E       = 1038
+   515 = 040F			L040F       = 1039
+   516 = 05CC			L05CC       = 1484
+   517 = 3220			L3220       = 12832
+   518 = C63E			LC63E       = 50750
+   519 = C642			LC642       = 50754
+   520 = FDFC			LFDFC       = 65020
+   521 				 
+    31 				;--------------------------------------------------------------------------------
+    32 				; State codes
+    33 				;--------------------------------------------------------------------------------
+    34 = 0001			            STATE_ID=1
+    35 = 0002			            STATE_BUFLO=2
+    36 = 0003			            STATE_BUFHI=3
+    37 = 0004			            STATE_BFENLO=4
+    38 = 0005			            STATE_BFENHI=5
+    39 = 0000			            STATE_DATA=0            
+    40 				;--------------------------------------------------------------------------------
+    41 				; Mainline code
+    42 				;--------------------------------------------------------------------------------
+    43 				            ORG 2048
+    44
+    45 0800 20 37 08		GOLOAD      jsr L0631         ;Call Turbo 2000 block decoding subroutine
+    46 0803 90 1E		            bcc HANDLE_ERROR  ;If error occured, handle error
+    47 				            
+    48 0805 A5 2D		            lda ICAX4Z        ;Check ID byte
+    49 0807 29 40		            and #64           ;Check for INIT indication
+    50 0809 F0 03		            beq NOT_INIT      ;If not, skip
+    51 080B 20 20 08		            jsr DOINIT        ;Go perform init jump
+    52 				            
+    53 080E A5 2D		NOT_INIT    lda ICAX4Z        ;Check ID byte
+    54 0810 29 80		            and #128          ;Check for EOF
+    55 0812 D0 03		            bne END_LOAD      ;If set, terminate loading
+    56 0814 4C 00 08		            jmp GOLOAD        ;If not, go and read next block    
+    57 				            
+    58 0817 20 1D 08		END_LOAD    jsr RUNIT         ;Run the loaded program
+    59 081A 4C 77 E4		            jmp COLDSV        ;Perform cold start after return
+    60 				            
+    61 081D 6C E0 02		RUNIT       jmp (RUNAD)       ;Run loaded program
+    62 0820 6C E2 02		DOINIT      jmp (INITAD)      ;Perform INIT jump
+    63 				            
+    64 				;-------------------------------------------------------------------------------
+    65 				; Load error - Display red screen and wait until RESET
+    66 				;-------------------------------------------------------------------------------            
+    67 0823 A9 18		HANDLE_ERROR lda #$18
+    68 0825 8D C6 02		             sta COLOR2
+    69 0828 8D C8 02		             sta COLOR4
+    70 082B 8D 1A D0		             sta COLBK
+    71 082E 8D 18 D0		             sta COLPF2
+    72 0831 8D 44 02		             sta COLDST       ;Ensure COLD start
+    73 0834 4C 34 08		ERR_LOOP     jmp ERR_LOOP     ;Endless loop
+    74 				;===============================================================================
+    75 				;Block decoding subroutine
+    76 				;Block is placed from: BUFRLO+256*BUFRHI
+    77 				;                to:   (BFENLO+256*BFENHI)-1
+    78 				;Register usage
+    79 				;Input:
+    80 				;  A - Identification byte - first byte of the block that is not part of the
+    81 				;      data
+    82 				;Output:
+    83 				;  CF - 1 - Block decoding OK
+    84 				;       0 - Block decoding failed           
+    85 				;
+    86 				;Fields used:
+    87 				; BUFRLO,BUFRHI,BFENLO,BFENHI - Buffer pointer
+    88 				; LTEMP   - State code
+    89 				; CHKSUM  - Checksum
+    90 				; LTEMP+1 - Display mask (0 no display, 255 display)
+    91 				; ICAX5Z  - Counter of pilot tone pulses
+    92 				; ICAX6Z  - Byte being decoded
+    93 				; STATUS  - Prior DATA IN logical value   
+    94 				; ICAX4Z  - ID byte store    
+    95 				;===============================================================================
+    96 				   
+    97 0837 A9 34		L0631       lda #52           ;Switch program recorder to turbo mode                                                             
+    98 0839 8D 02 D3		            sta PACTL         ;Motor ON
+    99 083C 8D 03 D3		            sta PBCTL         ;Command ON
+   100 				            
+   101 083F A9 80		            lda #128          ;Disable interrupts
+   102 0841 85 10		            sta POKMSK
+   103 0843 8D 0E D2		            sta IRQEN
+   104 				            
+   105 0846 A9 01		            lda #STATE_ID     ;Initial state
+   106 0848 85 36		            sta LTEMP
+   107 				            
+   108 084A 18			            clc               ;Clear work fields 
+   109 084B A0 00		            ldy #0
+   110 084D 84 30		            sty STATUS
+   111 084F 84 31		            sty CHKSUM
+   112 0851 8C 0E D4		            sty NMIEN
+   113 0854 8C 00 D4		            sty DMACLT
+   114 				;-------------------------------------------------------------------------------
+   115 				; Wait for 256 pilot tone pulses
+   116 				;-------------------------------------------------------------------------------           
+   117 0857 F0 03		L0650       beq L0652         ;If not equal, terminate decoding
+   118 0859 4C 0A 09		            jmp L06C2
+   119 085C 20 22 09		L0652       jsr L06DB         ;Wait for edge
+   120 085F 90 F6		            bcc L0650         ;If no edge, try again
+   121 				            
+   122 0861 A9 00		            lda #0            ;Clear           
+   123 0863 85 2E		            sta ICAX5Z        ; Number of pilot tone pulses 
+   124 0865 85 37		            sta LTEMP+1       ; Display mask (0 No stripes, 255 Stripes)
+   125 				            
+   126 0867 A0 B4		L065D       ldy #180          ;Set pulse width unit counter base value
+   127 0869 20 1D 09		L065F       jsr L06D6         ;Measure width of the pulse
+   128 086C 90 E9		            bcc L0650         ;If no pulse, start over
+   129 086E C0 D8		            cpy #216          ;Is the pulse too long?
+   130 0870 90 EA		            bcc L0652         ;Yes, start over
+   131 0872 E6 2E		            inc ICAX5Z        ;Increment pilot tone pulse counter
+   132 0874 D0 F1		            bne L065D         ;If not enough pilot tone pulses (255), get next
+   133 0876 C6 37		            dec LTEMP+1       ;More than 255 pilot tone pulses - display stripes
+   134
+   135 				;-------------------------------------------------------------------------------
+   136 				; Wait for synchronization (very narrow) pulse
+   137 				;-------------------------------------------------------------------------------
+   138 				            
+   139 0878 A0 D1		L066E       ldy #209          ;Set pulse width unit counter base value
+   140 087A 20 22 09		            jsr L06DB         ;Wait for edge
+   141 087D 90 D8		            bcc L0650         ;If no edge, start over
+   142 				            
+   143 087F C0 DE		            cpy #222          ;Pulse too wide to be a sync pulse?
+   144 0881 B0 F5		            bcs L066E         ;Yes, keep waiting
+   145 0883 20 22 09		            jsr L06DB         ;Wait for edge
+   146 0886 B0 03		            bcs NEXT_BYT1
+   147 0888 4C 0A 09		            jmp L06C2         ;If no edge, terminate decoding
+   148 				            
+   149 				;-------------------------------------------------------------------------------
+   150 				; Decode data
+   151 				;-------------------------------------------------------------------------------
+   152 				;Get next byte
+   153 088B A0 C6		NEXT_BYT1   ldy #198          ;Reset pulse timer
+   154 088D 20 F7 08		NEXT_BYTE   jsr GET8BITS      ;Start decoding the data
+   155
+   156 				;Determine if segment data byte or header            
+   157 0890 A4 36		L0683       ldy LTEMP         ;{3} Check state
+   158 0892 F0 2C		            beq L068E         ;{3} If zero, just place byte to the buffer
+   159
+   160 				;-------------------------------------------------------------------------------
+   161 				; Process block header bytes
+   162 				; Timing information
+   163 				;   Spent before       : 6
+   164 				;   Determine ID/buffer: 8
+   165 				;   Store ID and jump  : 9
+   166 				;   Set buffer         : 14
+   167 				;   Transition         : 13
+   168 				;   Pulse setup        : 5
+   169 				;                                                     Compensation
+   170 				; Total processing ID byte:      6+8+9+13+5 =  41     1*12 + 2*2 => 57
+   171 				; Total processing buffer setup: 6+8+14+13+5 = 46     1*12       => 58  
+   172
+   173 				;-------------------------------------------------------------------------------
+   174 				;Check for state            
+   175 0894 A5 2F		            lda ICAX6Z        ;{3} Hold the byte we just read
+   176 0896 C0 01		            cpy #STATE_ID     ;{2} Is this the initial byte?
+   177 0898 D0 0C		            bne HDR_BUF       ;{3} No, it muse be buffer setup
+   178 				            
+   179 				;Process the initial byte            
+   180 089A 85 2D		            sta ICAX4Z        ;{3}  Keep the value
+   181 089C 85 31		            sta CHKSUM        ;{3}  Begin new checksum
+   182 089E 20 48 09		            jsr L06FF         ;[12] Compensation   
+   183 08A1 EA			            nop               ;[2]  Compensation
+   184 08A2 EA			            nop               ;[2]  Compensation   
+   185 08A3 4C B2 08		            jmp HDR_TRANS     ;{3}  Perform header state transition
+   186 				            
+   187
+   188 				;Setting BUFRLO,BUFRHI,BFENLO,BFENHI
+   189 				;State code is used for indexing, offset is 2            
+   190 08A6 99 30 00		HDR_BUF     sta BUFRLO-STATE_BUFLO,Y ;{5} Store buffer range value
+   191
+   192 				;Checksum for the header bytes            
+   193 08A9 A5 31		            lda CHKSUM              ;{3}
+   194 08AB 45 2F		            eor ICAX6Z              ;{3}
+   195 08AD 85 31		            sta CHKSUM              ;{3}
+   196 08AF 20 48 09		            jsr L06FF               ;[12] Compensation
+   197 				            
+   198 				;Transition to the new state
+   199 08B2 C8			HDR_TRANS   iny                     ;{2} Presume going to higher state
+   200 08B3 C0 06		            cpy #[STATE_BFENHI+1]   ;{2} Is the state past last buffer state?
+   201 08B5 D0 02		            bne PUT_STATE           ;{3} No,skip
+   202 08B7 A0 00		            ldy #STATE_DATA         ;{3} Reset to state data
+   203 08B9 84 36		PUT_STATE   sty LTEMP               ;{3} Store the new state
+   204 				            
+   205 08BB A0 C8		            ldy #200                ;{2} Reset pulse timer
+   206 08BD 4C 8D 08		            jmp NEXT_BYTE           ;{3} Go and get next byte
+   207
+   208 				;-------------------------------------------------------------------------------
+   209 				; Process segment data bytes
+   210 				; Timing information:
+   211 				;   Cycles spent before :        6
+   212 				;   Update checksum     :        9
+   213 				;   Byffer range check  :        15
+   214 				;   Placing byte to buf :        24
+   215 				;   Checking chsum      :        21 
+   216 				;   Pulse setup         :        5
+   217 				;                                                     Compensation 
+   218 				; Total processing one data byte: 6+9+15+24+5 =  59    0   => 59
+   219 				; Total for processing chksum   : 6+9+15+21+5 =  56    1*2 => 58
+   220 				;-------------------------------------------------------------------------------
+   221 08C0			L068E
+   222 				;Update checksum
+   223 08C0 A5 31		            lda CHKSUM        ;{3}
+   224 08C2 45 2F		            eor ICAX6Z        ;{3}
+   225 08C4 85 31		            sta CHKSUM        ;{3}
+   226
+   227 				;Verify if all data decoded            
+   228 08C6 A5 32		            lda BUFRLO        ;{3} Check if all bytes decoded
+   229 08C8 C5 34		            cmp BFENLO        ;{3} 
+   230 08CA A5 33		            lda BUFRHI        ;{3} 
+   231 08CC E5 35		            sbc BFENHI        ;{3}
+   232 08CE B0 11		            bcs SEGDONE       ;{3} If all decoded, skip to termination
+   233
+   234 				;Place segment byte to a buffer            
+   235 08D0 A0 00		            ldy #0            ;{2} Place byte to the buffer
+   236 08D2 A5 2F		            lda ICAX6Z        ;{3}
+   237 08D4 91 32		            sta (BUFRLO),Y    ;{6}
+   238 08D6 E6 32		            inc BUFRLO        ;{5} Update buffer pointer
+   239 08D8 D0 02		            bne L069A         ;{3} 
+   240 08DA E6 33		            inc BUFRHI        ;{5} 
+   241 				            
+   242 08DC A0 C8		L069A       ldy #200          ;{2} Reset pulse timer
+   243 08DE 4C 8D 08		            JMP NEXT_BYTE     ;{3} Go and get next byte
+   244
+   245 				;Done with segment
+   246 08E1 EA			SEGDONE     nop               ;[2] Compensation nop
+   247 08E2 A9 00		            lda #0            ;{2} Use CF=0 to indicate bad checksum
+   248 08E4 C5 31		            cmp CHKSUM        ;{3} 
+   249 08E6 90 22		            bcc L06C2         ;{3} If bad checksum, terminate decoding
+   250
+   251 08E8 A5 2D		            lda ICAX4Z        ;{3} What was the first byte
+   252 08EA 29 C0		            and #[128+64]     ;{2} Check for special flags
+   253 08EC D0 1B		            bne L06C1         ;{3} If set, the block ends
+   254 				            
+   255 08EE A9 01		            lda #STATE_ID     ;{2} Reset state to zero
+   256 08F0 85 36		            sta LTEMP         ;{3} 
+   257 				            
+   258 08F2 A0 C8		            ldy #200          ;{2} 
+   259 08F4 4C 8D 08		            jmp NEXT_BYTE     ;{3} And continue processing
+   260 				;-------------------------------------------------------------------------------
+   261 				; Get 8 bits
+   262 				;-------------------------------------------------------------------------------
+   263 08F7 A9 01		GET8BITS    lda #1            ;Prepare bit mask
+   264 08F9 85 2F		            sta ICAX6Z         
+   265 				            
+   266 08FB 20 1D 09		G8B_L       jsr L06D6         ;Measure width of the pulse
+   267 08FE 90 0A		            bcc L06C2         ;If no pulse, terminate decoding
+   268 0900 C0 E3		            cpy #227          ;Determine wide or narrow pulse
+   269 0902 26 2F		            rol ICAX6Z        ;Rotate bit mask
+   270 0904 A0 C6		            ldy #198          ;Set pulse width unit counter base value
+   271 0906 90 F3		            bcc G8B_L         ;If byte not finished, get next bit
+   272 				            
+   273 0908 60			            rts
+   274 				;-------------------------------------------------------------------------------
+   275 				; Terminate decoding
+   276 				;------------------------------------------------------------------------------- 
+   277 0909 38			L06C1       sec               ;Successful block reading           
+   278 090A A9 C0		L06C2       lda #192          ;Enable interrupts
+   279 090C 8D 0E D4		            sta NMIEN
+   280 090F 85 10		            sta POKMSK
+   281 0911 8D 0E D2		            sta IRQEN
+   282 				            
+   283 0914 A9 3C		            lda #60           ;Switch program recorder mode to standard           
+   284 0916 8D 02 D3		            sta PACTL         ;Motor OFF
+   285 0919 8D 03 D3		            sta PBCTL         ;Command OFF
+   286 091C 60			            rts               ;Return
+   287
+   288 				;-------------------------------------------------------------------------------
+   289 				; Detect pulses and edges
+   290 				;-------------------------------------------------------------------------------            
+   291 091D 20 22 09		L06D6       jsr L06DB         ;Wait for edge
+   292 0920 90 26		            bcc L06FF         ;If no edge, terminate
+   293 				            
+   294 0922 A2 04		L06DB       ldx #4            ;Delay
+   295 0924 CA			L06DD       dex               
+   296 0925 D0 FD		            bne L06DD
+   297 				            
+   298 0927 A5 30		            lda STATUS        ;Get prior status of DATA IN  
+   299 0929 4A			            lsr               ;Shift it
+   300 092A 09 10		            ora #$10          ;Color
+   301 092C 25 37		            and LTEMP+1       ;Display stripe (if mask on)
+   302 092E 8D 1A D0		            sta COLBK
+   303 				            
+   304 0931 C8			L06E8       iny               ;Increment pulse width unit counter
+   305 0932 F0 13		            beq L06FE         ;If wraparound, terminate
+   306 0934 A5 11		            lda BRKKEY        ;Check BREAK key
+   307 0936 F0 0D		            beq L06FC         ;If pressed, terminate
+   308 0938 AD 0F D2		            lda SKSTAT        ;Get SKSTAT
+   309 093B 29 10		            and #16           ;Determine DATA IN logical value
+   310 093D C5 30		            cmp STATUS        ;Compare with prior one
+   311 093F F0 F0		            beq L06E8         ;If the same, then no edge has been found
+   312 0941 85 30		            sta STATUS        ;Otherwise, there was an edge (0-1 or 1-0)
+   313 0943 38			            sec               ;Indicate edge found
+   314 0944 60			            rts               ;And return
+   315 0945 C6 11		L06FC       dec BRKKEY
+   316 0947 18			L06FE       clc
+   317 0948 60			L06FF       rts
+   318 				 

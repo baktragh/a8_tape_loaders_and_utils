@@ -1,0 +1,88 @@
+mads 2.1.0 build 8 (23 Dec 19)
+Source: wrapper.asm
+     1 				;===============================================================================
+     2 				;Turbo 2000 - Express binary loader wrapper
+     3 				;===============================================================================
+     4
+     5 				;-------------------------------------------------------------------------------
+     6 				; Equates
+     7 				;-------------------------------------------------------------------------------
+     8 = 0032			            BUFRLO=50
+     9 = 0033			            BUFRHI=51
+    10 = 0034			            BFENLO=52
+    11 = 0035			            BFENHI=53
+    12 = 0800			            LOADERENTRY=$0800
+    13 = 0800			            LOADERSTART=$0800
+    14 = 0244			            COLDST=$0244
+    15 = 0009			            BOOT=$0009
+    16 = 0002			            CASINI=$0002
+    17 = E474			            WARMSV=$E474
+    18
+    19 				;-------------------------------------------------------------------------------
+    20 				; Start of code
+    21 				;-------------------------------------------------------------------------------
+    22 				            OPT H+
+    23 				            ORG 8192
+    24 				LOADER            
+    25 FFFF> 2000-2190> 20 37 +             INS 'express.bin'
+    26 2149			LOADER_END
+    27
+    28
+    29 2149 49 01		LENPTR      .BYTE <[LOADER_END-LOADER],>[LOADER_END-LOADER]
+    30 				            
+    31 				            
+    32 				; Relocator routine
+    33 214B			MOVDAT
+    34 214B A9 00		            LDA #<LOADER
+    35 214D 85 32		            STA BUFRLO
+    36 214F A9 20		            LDA #>LOADER
+    37 2151 85 33		            STA BUFRHI
+    38 				            
+    39 2153 A9 00		            LDA #<LOADERSTART
+    40 2155 85 34		            STA BFENLO
+    41 2157 A9 08		            LDA #>LOADERSTART
+    42 2159 85 35		            STA BFENHI
+    43 				            
+    44 215B A0 00		            LDY #0
+    45 215D AE 4A 21		            LDX LENPTR+1
+    46 2160 F0 0E		            BEQ MVPART
+    47 2162			MVPAGE
+    48 2162 B1 32		            LDA (BUFRLO),Y
+    49 2164 91 34		            STA (BFENLO),Y
+    50 2166 C8			            INY
+    51 2167 D0 F9		            BNE MVPAGE
+    52 2169 E6 33		            INC BUFRLO+1
+    53 216B E6 35		            INC BFENLO+1
+    54 216D CA			            DEX
+    55 216E D0 F2		            BNE MVPAGE
+    56 2170			MVPART
+    57 2170 AE 49 21		            LDX LENPTR
+    58 2173 F0 08		            BEQ MVEXIT
+    59 2175			MVLAST
+    60 2175 B1 32		            LDA (BUFRLO),Y
+    61 2177 91 34		            STA (BFENLO),Y
+    62 2179 C8			            INY
+    63 217A CA			            DEX
+    64 217B D0 F8		            BNE MVLAST
+    65 217D			MVEXIT
+    66
+    67 				;-------------------------------------------------------------------------------
+    68 				; Start loader
+    69 				;-------------------------------------------------------------------------------
+    70 217D A9 00		            lda #0                        ;Warm start
+    71 217F 8D 44 02		            sta COLDST                    
+    72 2182 A9 02		            lda #02                       ;Cassette boot successfull
+    73 2184 85 09		            sta BOOT
+    74 2186 A9 00		            lda #<LOADERENTRY             ;CASINI to loader entry
+    75 2188 85 02		            sta CASINI
+    76 218A A9 08		            lda #>LOADERENTRY
+    77 218C 85 03		            sta CASINI+1
+    78 				            
+    79 218E 4C 74 E4		            JMP WARMSV                    ;Warm start
+    80 				;-------------------------------------------------------------------------------
+    81 				; Run segment
+    82 				;-------------------------------------------------------------------------------
+    83
+    84 2191			            ORG 736
+    85 02E0-02E1> 4B 21		            .BYTE <MOVDAT,>MOVDAT
+    86 				          
