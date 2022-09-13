@@ -5,16 +5,22 @@
 ; - Loading of segmented binary files
 ; - Pilot tone needed only after INIT segments
 
-; Block format
+; File format:
+;
+; The file consists of Turbo 2000 blocks, each block can hold data of
+; multiple segments. A new block is started after an INIT segment. 
+;
+; For each segment, there is the following data: 
 ; (0)    ID Byte .... 0101  Turbo 2000 Express Loader signature
-;                1... ....  This is the last block of file
-;               .1..  ....  This block holds INIT segment
+;                1... ....  This is the last segment
+;                .1.. ....  This segment is an INIT segment
+; 
 ; (1..4) Buffer range  (BUFLO,BUFHI,BFENLO,BFENHI)
 ; (5..x) Data bytes    (given by the buffer range)
-; (x+1)  XOR based checksum (all bytes before)
+; (x+1)  XOR based checksum (all bytes of the segment before)
 ;
 ; What bytes are read is given by a "state" of the loader that is
-; held in the LTEMP variable
+; held in the LTEMP variable.
 ;
 ; STATE_ID     - Reading ID byte (initial state)
 ; STATE_BUFLO  - Reading BUFLO
@@ -252,7 +258,7 @@ SEGDONE     nop               ;[2] Compensation nop
             and #[128+64]     ;{2} Check for special flags
             bne L06C1         ;{3} If set, the block ends
             
-            lda #STATE_ID     ;{2} Reset state to zero
+            lda #STATE_ID     ;{2} Reset state to ID
             sta LTEMP         ;{3} 
             
             ldy #200          ;{2} 
