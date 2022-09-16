@@ -1,24 +1,30 @@
 ;===============================================================================
-;Omicron Turbo - Express Loader
+;TURBO 2000 Express Loader - Omicron Turbo Version
 ;
+; - Binary loader based on Czechoslovak Turbo 2000 system
 ; - Loading of segmented binary files
 ; - Pilot tone needed only after INIT segments
 
-; Block format
-; (0)    ID Byte .... 0101  Omicron Express Loader signature
-;                1... ....  This is the last block of file
-;               .1.. ....   This block holds INIT segment
-; (1)    Buffer range  (BUFLO,BUFHI,BFENLO,BFENHI)
+; File format:
+;
+; The file consists of Turbo 2000 blocks, each block can hold data of
+; multiple segments. A new block is started after an INIT segment. 
+;
+; For each segment, there is the following data: 
+; (0)    ID Byte .... 0101  Turbo 2000 Express Loader signature
+;                1... ....  This is the last segment
+;                .1.. ....  This segment is an INIT segment
+; 
+; (1..4) Buffer range  (BUFLO,BUFHI,BFENLO,BFENHI)
 ; (5..x) Data bytes    (given by the buffer range)
-; (x+1)  XOR based checksum (all bytes before)
-;                  
+; (x+1)  XOR based checksum (all bytes of the segment before)
 ;
 ; What bytes are read is given by a "state" of the loader that is
-; held in the LTEMP variable
+; held in the LTEMP variable.
 ;
-; STATE_ID    - Reading ID byte (initial state)
-; STATE_BUFLO - Reading BUFLO
-; STATE_BUFHI - Reading BUFHI
+; STATE_ID     - Reading ID byte (initial state)
+; STATE_BUFLO  - Reading BUFLO
+; STATE_BUFHI  - Reading BUFHI
 ; STATE_BFENLO - Reading BFENLO
 ; STATE_BFENHI - Reading BFENHI
 ; STATE_DATA   - Reading segment data and checksum
@@ -41,9 +47,8 @@
 ; Mainline code
 ;--------------------------------------------------------------------------------
             ORG 2048
-            
-            jsr STARTUP       ;Call subroutine that performs initial setup
-            jsr SWITCH_SIG    ;Switch signal source
+            jsr STARTUP
+            jsr SWITCH_SIG
 
 GOLOAD      jsr L0631         ;Call Turbo 2000 block decoding subroutine
             bcc HANDLE_ERROR  ;If error occured, handle error
@@ -132,7 +137,7 @@ L065F       jsr L06D6         ;Measure width of the pulse
             cpy #216          ;Is the pulse too long?
             bcc L0652         ;Yes, start over
             inc ICAX5Z        ;Increment pilot tone pulse counter
-            bne L065D         ;If not enoguh pilot tone pulses (255), get next
+            bne L065D         ;If not enough pilot tone pulses (255), get next
             dec LTEMP+1       ;More than 255 pilot tone pulses - display stripes
 
 ;-------------------------------------------------------------------------------
@@ -157,78 +162,109 @@ NEXT_BYT1   ldy #198          ;Reset pulse timer
 NEXT_BYTE   jsr GET8BITS      ;Start decoding the data
 
 ;Determine if segment data byte or header            
-L0683       ldy LTEMP         ;Check state
-            beq L068E         ;If zero, just place byte to the buffer
+L0683       ldy LTEMP         ;{3} Check state
+            beq L068E         ;{3} If zero, just place byte to the buffer
 
 ;-------------------------------------------------------------------------------
 ; Process block header bytes
+; Timing information
+;   Spent before       : 6
+;   Determine ID/buffer: 8
+;   Store ID and jump  : 9
+;   Set buffer         : 14
+;   Transition         : 13
+;   Pulse setup        : 5
+;                                                     Compensation
+; Total processing ID byte:      6+8+9+13+5 =  41     1*12 + 2*2 => 57
+; Total processing buffer setup: 6+8+14+13+5 = 46     1*12       => 58  
+
 ;-------------------------------------------------------------------------------
-;Initial byte            
-            lda ICAX6Z        ;Hold the byte we just read
-            cpy #STATE_ID          ;If one, this is initial byte
-            bne NOT_ID
-            sta ICAX4Z        ;Keep the value
-            jmp PUT_CHSUM     ;Start new checksum count
+;Check for state            
+            lda ICAX6Z        ;{3} Hold the byte we just read
+            cpy #STATE_ID     ;{2} Is this the initial byte?
+            bne HDR_BUF       ;{3} No, it muse be buffer setup
+            
+;Process the initial byte            
+            sta ICAX4Z        ;{3}  Keep the value
+            sta CHKSUM        ;{3}  Begin new checksum
+            jsr L06FF         ;[12] Compensation   
+            nop               ;[2]  Compensation
+            nop               ;[2]  Compensation   
+            jmp HDR_TRANS     ;{3}  Perform header state transition
+            
 
 ;Setting BUFRLO,BUFRHI,BFENLO,BFENHI
 ;State code is used for indexing, offset is 2            
-NOT_ID      sta BUFRLO-STATE_BUFLO,Y
+HDR_BUF     sta BUFRLO-STATE_BUFLO,Y ;{5} Store buffer range value
 
 ;Checksum for the header bytes            
-DO_CHSUM    lda CHKSUM
-            eor ICAX6Z
-PUT_CHSUM   sta CHKSUM
-
-;Transition to the new state
-            iny                     ;Presume going to higher state
-            cpy #[STATE_BFENHI+1]   ;Is the state past last buffer state?
-            bne PUT_STATE           ;No,skip
-            ldy #STATE_DATA         ;Reset to state data
-PUT_STATE   sty LTEMP
+            lda CHKSUM              ;{3}
+            eor ICAX6Z              ;{3}
+            sta CHKSUM              ;{3}
+            jsr L06FF               ;[12] Compensation
             
-            ldy #200                ;Reset pulse timer
-            jmp NEXT_BYTE           ;Go and get next byte
+;Transition to the new state
+HDR_TRANS   iny                     ;{2} Presume going to higher state
+            cpy #[STATE_BFENHI+1]   ;{2} Is the state past last buffer state?
+            bne PUT_STATE           ;{3} No,skip
+            ldy #STATE_DATA         ;{3} Reset to state data
+PUT_STATE   sty LTEMP               ;{3} Store the new state
+            
+            ldy #200                ;{2} Reset pulse timer
+            jmp NEXT_BYTE           ;{3} Go and get next byte
 
 ;-------------------------------------------------------------------------------
 ; Process segment data bytes
+; Timing information:
+;   Cycles spent before :        6
+;   Update checksum     :        9
+;   Byffer range check  :        15
+;   Placing byte to buf :        24
+;   Checking chsum      :        21 
+;   Pulse setup         :        5
+;                                                     Compensation 
+; Total processing one data byte: 6+9+15+24+5 =  59    0   => 59
+; Total for processing chksum   : 6+9+15+21+5 =  56    1*2 => 58
 ;-------------------------------------------------------------------------------
 L068E
 ;Update checksum
-            lda CHKSUM        ;Update checksum
-            eor ICAX6Z
-            sta CHKSUM
+            lda CHKSUM        ;{3}
+            eor ICAX6Z        ;{3}
+            sta CHKSUM        ;{3}
 
 ;Verify if all data decoded            
-            lda BUFRLO        ;Check if all bytes decoded
-            cmp BFENLO
-            lda BUFRHI
-            sbc BFENHI
-            bcs SEGDONE      ;If all decoded, skip to termination
+            lda BUFRLO        ;{3} Check if all bytes decoded
+            cmp BFENLO        ;{3} 
+            lda BUFRHI        ;{3} 
+            sbc BFENHI        ;{3}
+            bcs SEGDONE       ;{3} If all decoded, skip to termination
 
 ;Place segment byte to a buffer            
-            ldy #0            ;Place byte to the buffer
-            lda ICAX6Z
-            sta (BUFRLO),Y
-            inc BUFRLO        ;Update buffer pointer
-            bne L069A
-            inc BUFRHI
+            ldy #0            ;{2} Place byte to the buffer
+            lda ICAX6Z        ;{3}
+            sta (BUFRLO),Y    ;{6}
+            inc BUFRLO        ;{5} Update buffer pointer
+            bne L069A         ;{3} 
+            inc BUFRHI        ;{5} 
             
-L069A       ldy #200          ;Reset pulse timer
-            JMP NEXT_BYTE     ;Go and get next byte
+L069A       ldy #200          ;{2} Reset pulse timer
+            JMP NEXT_BYTE     ;{3} Go and get next byte
 
 ;Done with segment
-SEGDONE     lda #0            ;Use CF=0 to indicate bad checksum
-            cmp CHKSUM
-            bcc L06C2         ;If bad checksum, terminate decoding
+SEGDONE     nop               ;[2] Compensation nop
+            lda #0            ;{2} Use CF=0 to indicate bad checksum
+            cmp CHKSUM        ;{3} 
+            bcc L06C2         ;{3} If bad checksum, terminate decoding
 
-            lda ICAX4Z        ;What was the first byte
-            and #[128+64]     ;Check for special flags
-            bne L06C1         ;If set, the block ends
+            lda ICAX4Z        ;{3} What was the first byte
+            and #[128+64]     ;{2} Check for special flags
+            bne L06C1         ;{3} If set, the block ends
             
-            lda #STATE_ID     ;Reset state to zero
-            sta LTEMP
-            ldy #200
-            jmp NEXT_BYTE     ;And continue processing
+            lda #STATE_ID     ;{2} Reset state to ID
+            sta LTEMP         ;{3} 
+            
+            ldy #200          ;{2} 
+            jmp NEXT_BYTE     ;{3} And continue processing
 ;-------------------------------------------------------------------------------
 ; Get 8 bits
 ;-------------------------------------------------------------------------------
@@ -269,8 +305,8 @@ L06DD       dex
             
             lda STATUS        ;Get prior status of DATA IN  
             lsr               ;Shift it
-L_BKG       ora #$00          ;Color. This is zapped by signal switch
-            and LTEMP+1
+L_BKG       ora #$00          ;Color
+            and LTEMP+1       ;Display stripe (if mask on)
             sta COLBK
             
 L06E8       iny               ;Increment pulse width unit counter
@@ -287,9 +323,6 @@ L_AND       and #16           ;Determine DATA IN logical value
 L06FC       dec BRKKEY
 L06FE       clc
 L06FF       rts
-
-VOLATILE    EQU *-1           ;Volatile area tag
-
 ;-----------------------------------------------------------------------------
 ; Switch signal source
 ;-----------------------------------------------------------------------------
