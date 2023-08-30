@@ -42,31 +42,18 @@
 ; Checksum (Standard SIO checksum)
 ;
 ;Logical file format
-;-------------------
-;  0: Eye-catcher ('L')
-;  1: Progress indicator initial position
-;  2: Progress indicator final position
-;  3: Progress indicator step code      
-;  4: SOUNDR flag
-;  5: CLRSCR character (atascii)
-;  6: Program title (atascii), 30 characters total
-; 36: EOL character (atascii)
-; 37: Background color
-; 38: .... 1111 Foreground luminance
-;     1... .... Cursor OFF flag
-;     .1.. .... ATRACT suppresion flag 
-; 39: Reserve 
-; 40: Segment block(s)
-;     2 bytes first address
-;     2 bytes last address
-;     Or 0xFF 0xFF 0xFE 0xFE EOF indicator
-;     Bytes of the segment
-;
+; 0 Segment block(s)
+;   2 bytes first address
+;   2 bytes last address
+;   Or 0xFF 0xFF 0xFE 0xFE EOF indicator
+;   Bytes of the segment
+
 ;Maintenance log
 ;---------------
 ;2022-03-04 Initial version
 ;2022-04-11 Add support for showing loading progress using PMG
 ;2022-07-21 Support for ATRACT mode suppression 
+;2023-08-30 Move loader configuration to the loader itself
 ;===============================================================================
             
 ;===============================================================================
@@ -101,21 +88,10 @@
           BLK_DOFS  = 3
 
 ;File format              
-          HB_P_FIRST= 1+BLK_DOFS
-          HB_P_LAST = 2+BLK_DOFS
-          HB_P_STEP = 3+BLK_DOFS    
-          
-          HB_SOUNDR = 4+BLK_DOFS
-          HB_CLRSCR = 5+BLK_DOFS
-          HB_BG     = 37+BLK_DOFS
-          HB_LUM    = 38+BLK_DOFS
-          HB_LUM_MASK = $0F
-          HB_FLG_CRSIN = $80
-          HB_FLG_NOATRACT = $40
-          HB_FLAGS  = 38+BLK_DOFS  
-          HB_DATA   = 40+BLK_DOFS
-          
-          TITLE_LEN = 30+2
+          CFG_V_LUMA_MASK = $0F
+          CFG_V_F_CRSIN = $80
+          CFG_V_F_NOATRACT = $40
+          CFG_V_TITLE_LEN = 30+2
           
 ;Miscellaneous          
           LDR_END = BLOCK_BUFFER+BUF_LEN-1
@@ -168,17 +144,12 @@ RELO_P2_L lda  1024-128,X
 ;-------------------------------------------------------------------------------
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
-BLTOP     jsr GET_BLOCK           ;Get first block
-          lda #<(BLOCK_BUFFER+HB_DATA) ;Special setup for the first block
-          sta BUFRLO
-          lda #>(BLOCK_BUFFER+HB_DATA)
-          sta BUFRHI
-
 .IF LDR_CFG=C_PMG          
           jsr SET_PROGRESS        ;Set progress indicators
 .ENDIF          
           jsr SCREEN              ;Setup screen
-          
+
+BLTOP     jsr GET_BLOCK           ;Get first block
 BL_START  
 ;===============================================================================
 ; Read a segment 
@@ -287,7 +258,7 @@ GB_DOGET  ldy #0
 GET_BLOCK pha
           
           lda W_FLAGS             ;Check flags
-          and #HB_FLG_NOATRACT    ;Suppress ATRACT?
+          and #CFG_V_F_NOATRACT    ;Suppress ATRACT?
           beq GB_SIOSET           ;No, skip
           lda #0                  ;Yes, reset ATRACT
           sta ATRACT
@@ -403,13 +374,13 @@ SET_PROGRESS
           pha
 ;          
 ;Set positions of the Ms
-          lda BLOCK_BUFFER+HB_P_FIRST          ;Get first position
+          lda CFG_P_INI                        ;Get first position
           sta P_X                              ;Save it
           sta HPOSM0                           ;Set it for M0 and M1
           sta HPOSM1
-          lda BLOCK_BUFFER+HB_P_LAST           ;Get last position
+          lda CFG_P_FIN                        ;Get last position
           sta HPOSM2                           ;Set it for M2
-          lda BLOCK_BUFFER+HB_P_STEP           ;Get step code
+          lda CFG_P_STEP                       ;Get step code
           sta P_CNTR                           ;Save it
           sta P_STEP
 ;          
@@ -463,31 +434,31 @@ ERRREST  jmp WARMSV              ;Perform warm reset
 ;===============================================================================
 SCREEN
 ;Other elements of LaF
-          lda BLOCK_BUFFER+HB_BG  ;Set background
+          lda CFG_BG  ;Set background
           sta COLOR2
           
-          lda BLOCK_BUFFER+HB_LUM ;Set luminance
-          and #HB_LUM_MASK
+          lda CFG_LUMA ;Set luminance
+          and #CFG_V_LUMA_MASK
           sta COLOR1
           
-          lda BLOCK_BUFFER+HB_SOUNDR ;Set SOUNDR
+          lda CFG_SOUNDR ;Set SOUNDR
           sta SOUNDR
           
-          lda BLOCK_BUFFER+HB_FLAGS ;Copy flags byte
+          lda CFG_LUMA  ;Copy LUMA+flags byte
           sta W_FLAGS
           
-          and #HB_FLG_CRSIN         ;Inhibit cursor when needed
+          and #CFG_V_F_CRSIN         ;Inhibit cursor when needed
           sta CRSINH
          
 
 ;Program title
           lda #9                  ;Requesting PRINT
           sta CIO0_OP
-          lda #<(BLOCK_BUFFER+HB_CLRSCR)
+          lda #<CFG_CLRSCR
           sta CIO0_BUFLO
-          lda #>(BLOCK_BUFFER+HB_CLRSCR)
+          lda #>CFG_CLRSCR
           sta CIO0_BUFHI
-          lda #TITLE_LEN
+          lda #CFG_V_TITLE_LEN
           sta CIO0_LENLO
           ldx #0                  ;Channel 0
           stx CIO0_LENHI
@@ -520,6 +491,24 @@ DO_RTS    rts
 W_FLAGS   .BYTE 0
 
 ;===============================================================================
+; Configuration area, to be zapped
+;===============================================================================
+CFG_EYE       .BYTE 'C'         ;Eye-catcher
+CFG_P_INI     .BYTE 0           ;Progress indicator, initial position
+CFG_P_FIN     .BYTE 0           ;Progress indicator, final position
+CFG_P_STEP    .BYTE 0           ;Progress indicator, step code
+CFG_SOUNDR    .BYTE 0           ;SOUNDR
+CFG_BG        .BYTE 0           ;Background
+CFG_LUMA      .BYTE 0           ;Luminance 
+                                ; .... 1111 Foreground luminance
+                                ; 1... .... Cursor off flag
+                                ; .1.. .... Atract suppresion flag 
+CFG_RESERVE   .BYTE 0           ;Reserve for future use
+CFG_CLRSCR    .BYTE 125         ;Clear screen character
+CFG_TITLE     .BYTE '                              ' ;30
+CFG_EOL       .BYTE $9B         ;End of line
+
+;===============================================================================
 ; BUFFER
 ;===============================================================================
           .BYTE 'B'               ;Eye-catcher before buffer
@@ -531,4 +520,4 @@ BLOCK_BUFFER
 .IF BUILD=B_XEX
           RUN BLTOP
           
-.ENDIF          
+.ENDIF       
