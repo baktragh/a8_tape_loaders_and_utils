@@ -75,6 +75,9 @@ BOOT_END
 ENTRY_POINT    ldx #$FF                      ;Reset stack
                txs
                jsr LDR_SETUP
+.IF TITLE=1
+               jsr TITLE_SCREEN
+.ENDIF
 ;-------------------------------------------------------------------------------
 ; Loader
 ;-------------------------------------------------------------------------------               
@@ -355,5 +358,62 @@ WFORKEYL    cmp CH                  ;Wait for any key
             beq WFORKEYL
          
 ERRREST     jmp WARMSV              ;Perform warm reset
+
+.IF TITLE=1
+;-------------------------------------------------------------------------------
+; Title screen
+;-------------------------------------------------------------------------------
+          CIO0_OP   =$0342
+          CIO0_STAT =$0343
+          CIO0_BUFLO=$0344
+          CIO0_BUFHI=$0345
+          CIO0_LENLO=$0348
+          CIO0_LENHI=$0349
+          CIO0_AUX1 =$034A
+          CIO0_AUX2 =$034B
+
+TITLE_SCREEN   
+          lda #$3C
+          sta PACTL
+ 
+          lda #9                  ;Requesting PRINT
+          sta CRSINH
+          sta CIO0_OP
+          lda #<TITLE_CHARS
+          sta CIO0_BUFLO
+          lda #>TITLE_CHARS
+          sta CIO0_BUFHI
+          lda #<TITLE_CHARS_LEN
+          sta CIO0_LENLO
+          ldx #0                  ;Channel 0
+          stx CIO0_LENHI
+          jsr CIOV                ;Call CIO
+
+          lda #0
+          sta RTCLOK
+DTICK     lda RTCLOK+1
+DLOOP     cmp RTCLOK+1
+          beq DLOOP
+
+          rts
+
+TITLE_CHARS .BYTE 125
+            .BYTE 29,29,29,29,29
+            .BYTE 31,31,31,31,31,31,31,31,31,31,31,31
+            .BYTE 'SPEEDY 2700'
+            .BYTE 29,29
+            .BYTE 30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+            .BYTE 'File''s Turbo Loader'
+            .BYTE 29
+            .BYTE 30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30
+            .BYTE '-------------------'
+            .BYTE 29
+            .BYTE 30,30,30,30,30,30,30,30,30,30
+            .BYTE 30,30,30,30,30,30,30,30,30,30,30
+            .BYTE '(C)*AJEK  WARSZAWA 1990' 
+            .BYTE 155
+            
+          TITLE_CHARS_LEN = *-TITLE_CHARS
+.ENDIF
 ;-------------------------------------------------------------------------------
 LDR_END     

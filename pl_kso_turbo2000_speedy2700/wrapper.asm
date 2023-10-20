@@ -22,7 +22,11 @@
             OPT H+
             ORG 8192
 LOADER            
+.IF TITLE=1
+            INS 'speedy2700_core_t.bin'
+.ELSE
             INS 'speedy2700_core.bin'
+.ENDIF
 LOADER_END
 
 
