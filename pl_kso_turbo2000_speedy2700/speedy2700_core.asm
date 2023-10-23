@@ -390,7 +390,8 @@ TITLE_SCREEN
           jsr CIOV                ;Call CIO
 
           lda #0
-          sta RTCLOK
+          sta RTCLOK+2
+          sta RTCLOK+1 
 DTICK     lda RTCLOK+1
 DLOOP     cmp RTCLOK+1
           beq DLOOP
