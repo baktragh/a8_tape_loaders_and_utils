@@ -76,14 +76,14 @@ MVLAST
             DEX
             BNE MVLAST
 MVEXIT
-            
-            lda #<LOADERENTRY
-            sta CASINI
-            lda #>LOADERENTRY
-            sta CASINI
 ;-------------------------------------------------------------------------------
 ; Start loader
 ;-------------------------------------------------------------------------------
+            lda #<LOADERENTRY
+            sta CASINI
+            lda #>LOADERENTRY
+            sta CASINI+1
+
             JMP LOADERENTRY
 
 ;Display the title screen
