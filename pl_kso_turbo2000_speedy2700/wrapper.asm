@@ -76,7 +76,11 @@ MVLAST
             DEX
             BNE MVLAST
 MVEXIT
-
+            
+            lda #<LOADERENTRY
+            sta CASINI
+            lda #>LOADERENTRY
+            sta CASINI
 ;-------------------------------------------------------------------------------
 ; Start loader
 ;-------------------------------------------------------------------------------
@@ -115,10 +119,9 @@ TITLE_SCREEN
 
            lda #0
            sta RTCLOK+2
-           sta RTCLOK+1 
-DTICK      lda RTCLOK+1
-DLOOP      cmp RTCLOK+1
-           beq DLOOP
+DLOOP      lda RTCLOK+2
+           cmp #200
+           bcc DLOOP
 
            rts 
 
