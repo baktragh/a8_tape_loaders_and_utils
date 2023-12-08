@@ -248,45 +248,33 @@ L0859       jmp TERMINATE          ; And terminate processing
 ;-------------------------------------------------------------------------------
 TERMINATE   ldx SP_BACKUP          ; Get stack pointer
             txs                    ; Restore stack pointer
-            lda #192     
-            sta NMIEN
-            sta POKMSK
-            sta IRQEN
-            
-            lda #60                ;Group A - COMMAND Inactive
+            lda #$38
+            sta PACTL
+            lda #$00
+            sta PORTA
+            lda #$3C
+            sta PACTL
             sta PBCTL
-            
-            lda #$38               ;Group C - Reset joystick port         
-            sta PACTL              
-            lda #$00               
-            sta PORTA              
-            
-            lda #$3C               ;Motor off
-            sta PACTL          
-            
-            cli                    ;Re-enable interrupts
-            rts                    ;Return
+            lda #$C0
+            sta NMIEN
+            cli
+            rts                    ; Return
 ;-------------------------------------------------------------------------------
 ; Prepare the system for decoding
 ;-------------------------------------------------------------------------------
-PREP_SYS    lda #$00               ; Disable NMI and DMA
-            sta NMIEN              ; 
-            sta DMACLT             ; 
-            sta CHKSUM             ; Clear checksum
-            lda #$08               ; Clear CONSOLE keys register
-            sta CONSOL             ;
-
-            lda #52                ;Group A - COMMAND active
-            sta PBCTL
-            
-            lda #$38               ;Group C - Input/Output from joystick port
-            sta PACTL              ;Direction control mode
-            lda #$60               ;Set direction contol bits
+PREP_SYS    sei
+            lda #$00
+            sta NMIEN
+            sta DMACLT
+            sta CHKSUM
+            lda #$38
+            sta PACTL
+            lda #$60
             sta PORTA
-            lda #$34               ;PORTA addressing mode
-            sta PACTL              ;Motor on            
+            lda #$34
+            sta PACTL
+            sta PBCTL
 
-            sei                    ; Disable interrupts
             tsx                    ; SP to X
             inx                    ; X+=2
             inx                    ; 
