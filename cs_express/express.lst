@@ -1,4 +1,4 @@
-mads 2.1.0 build 8 (23 Dec 19)
+mads 2.1.3
 Source: express.asm
      1 				;===============================================================================
      2 				;TURBO 2000 Express Loader
@@ -576,273 +576,274 @@ Source: equates.asm
     52 0803 90 1E		            bcc HANDLE_ERROR  ;If error occured, handle error
     53 				            
     54 0805 A5 2D		            lda ICAX4Z        ;Check ID byte
-    55 0807 29 40		            and #64           ;Check for INIT indication
-    56 0809 F0 03		            beq NOT_INIT      ;If not, skip
-    57 080B 20 20 08		            jsr DOINIT        ;Go perform init jump
-    58 				            
-    59 080E A5 2D		NOT_INIT    lda ICAX4Z        ;Check ID byte
-    60 0810 29 80		            and #128          ;Check for EOF
-    61 0812 D0 03		            bne END_LOAD      ;If set, terminate loading
-    62 0814 4C 00 08		            jmp GOLOAD        ;If not, go and read next block    
-    63 				            
-    64 0817 20 1D 08		END_LOAD    jsr RUNIT         ;Run the loaded program
-    65 081A 4C 77 E4		            jmp COLDSV        ;Perform cold start after return
-    66 				            
-    67 081D 6C E0 02		RUNIT       jmp (RUNAD)       ;Run loaded program
-    68 0820 6C E2 02		DOINIT      jmp (INITAD)      ;Perform INIT jump
-    69 				            
-    70 				;-------------------------------------------------------------------------------
-    71 				; Load error - Display red screen and wait until RESET
-    72 				;-------------------------------------------------------------------------------            
-    73 0823 A9 18		HANDLE_ERROR lda #$18
-    74 0825 8D C6 02		             sta COLOR2
-    75 0828 8D C8 02		             sta COLOR4
-    76 082B 8D 1A D0		             sta COLBK
-    77 082E 8D 18 D0		             sta COLPF2
-    78 0831 8D 44 02		             sta COLDST       ;Ensure COLD start
-    79 0834 4C 34 08		ERR_LOOP     jmp ERR_LOOP     ;Endless loop
-    80 				;===============================================================================
-    81 				;Block decoding subroutine
-    82 				;Block is placed from: BUFRLO+256*BUFRHI
-    83 				;                to:   (BFENLO+256*BFENHI)-1
-    84 				;Register usage
-    85 				;Input:
-    86 				;  A - Identification byte - first byte of the block that is not part of the
-    87 				;      data
-    88 				;Output:
-    89 				;  CF - 1 - Block decoding OK
-    90 				;       0 - Block decoding failed           
-    91 				;
-    92 				;Fields used:
-    93 				; BUFRLO,BUFRHI,BFENLO,BFENHI - Buffer pointer
-    94 				; LTEMP   - State code
-    95 				; CHKSUM  - Checksum
-    96 				; LTEMP+1 - Display mask (0 no display, 255 display)
-    97 				; ICAX5Z  - Counter of pilot tone pulses
-    98 				; ICAX6Z  - Byte being decoded
-    99 				; STATUS  - Prior DATA IN logical value   
-   100 				; ICAX4Z  - ID byte store    
-   101 				;===============================================================================
-   102 				   
-   103 0837 A9 34		L0631       lda #52           ;Switch program recorder to turbo mode                                                             
-   104 0839 8D 02 D3		            sta PACTL         ;Motor ON
-   105 083C 8D 03 D3		            sta PBCTL         ;Command ON
-   106 				            
-   107 083F A9 80		            lda #128          ;Disable interrupts
-   108 0841 85 10		            sta POKMSK
-   109 0843 8D 0E D2		            sta IRQEN
-   110 				            
-   111 0846 A9 01		            lda #STATE_ID     ;Initial state
-   112 0848 85 36		            sta LTEMP
-   113 				            
-   114 084A 18			            clc               ;Clear work fields 
-   115 084B A0 00		            ldy #0
-   116 084D 84 30		            sty STATUS
-   117 084F 84 31		            sty CHKSUM
-   118 0851 8C 0E D4		            sty NMIEN
-   119 0854 8C 00 D4		            sty DMACLT
-   120 				;-------------------------------------------------------------------------------
-   121 				; Wait for 256 pilot tone pulses
-   122 				;-------------------------------------------------------------------------------           
-   123 0857 F0 03		L0650       beq L0652         ;If not equal, terminate decoding
-   124 0859 4C 0A 09		            jmp L06C2
-   125 085C 20 22 09		L0652       jsr L06DB         ;Wait for edge
-   126 085F 90 F6		            bcc L0650         ;If no edge, try again
-   127 				            
-   128 0861 A9 00		            lda #0            ;Clear           
-   129 0863 85 2E		            sta ICAX5Z        ; Number of pilot tone pulses 
-   130 0865 85 37		            sta LTEMP+1       ; Display mask (0 No stripes, 255 Stripes)
-   131 				            
-   132 0867 A0 B4		L065D       ldy #180          ;Set pulse width unit counter base value
-   133 0869 20 1D 09		L065F       jsr L06D6         ;Measure width of the pulse
-   134 086C 90 E9		            bcc L0650         ;If no pulse, start over
-   135 086E C0 D8		            cpy #216          ;Is the pulse too long?
-   136 0870 90 EA		            bcc L0652         ;Yes, start over
-   137 0872 E6 2E		            inc ICAX5Z        ;Increment pilot tone pulse counter
-   138 0874 D0 F1		            bne L065D         ;If not enough pilot tone pulses (255), get next
-   139 0876 C6 37		            dec LTEMP+1       ;More than 255 pilot tone pulses - display stripes
-   140
-   141 				;-------------------------------------------------------------------------------
-   142 				; Wait for synchronization (very narrow) pulse
-   143 				;-------------------------------------------------------------------------------
-   144 				            
-   145 0878 A0 D1		L066E       ldy #209          ;Set pulse width unit counter base value
-   146 087A 20 22 09		            jsr L06DB         ;Wait for edge
-   147 087D 90 D8		            bcc L0650         ;If no edge, start over
-   148 				            
-   149 087F C0 DE		            cpy #222          ;Pulse too wide to be a sync pulse?
-   150 0881 B0 F5		            bcs L066E         ;Yes, keep waiting
-   151 0883 20 22 09		            jsr L06DB         ;Wait for edge
-   152 0886 B0 03		            bcs NEXT_BYT1
-   153 0888 4C 0A 09		            jmp L06C2         ;If no edge, terminate decoding
-   154 				            
-   155 				;-------------------------------------------------------------------------------
-   156 				; Decode data
-   157 				;-------------------------------------------------------------------------------
-   158 				;Get next byte
-   159 088B A0 C6		NEXT_BYT1   ldy #198          ;Reset pulse timer
-   160 088D 20 F7 08		NEXT_BYTE   jsr GET8BITS      ;Start decoding the data
-   161
-   162 				;Determine if segment data byte or header            
-   163 0890 A4 36		L0683       ldy LTEMP         ;{3} Check state
-   164 0892 F0 2C		            beq L068E         ;{3} If zero, just place byte to the buffer
-   165
-   166 				;-------------------------------------------------------------------------------
-   167 				; Process block header bytes
-   168 				; Timing information
-   169 				;   Spent before       : 6
-   170 				;   Determine ID/buffer: 8
-   171 				;   Store ID and jump  : 9
-   172 				;   Set buffer         : 14
-   173 				;   Transition         : 13
-   174 				;   Pulse setup        : 5
-   175 				;                                                     Compensation
-   176 				; Total processing ID byte:      6+8+9+13+5 =  41     1*12 + 2*2 => 57
-   177 				; Total processing buffer setup: 6+8+14+13+5 = 46     1*12       => 58  
-   178
-   179 				;-------------------------------------------------------------------------------
-   180 				;Check for state            
-   181 0894 A5 2F		            lda ICAX6Z        ;{3} Hold the byte we just read
-   182 0896 C0 01		            cpy #STATE_ID     ;{2} Is this the initial byte?
-   183 0898 D0 0C		            bne HDR_BUF       ;{3} No, it muse be buffer setup
-   184 				            
-   185 				;Process the initial byte            
-   186 089A 85 2D		            sta ICAX4Z        ;{3}  Keep the value
-   187 089C 85 31		            sta CHKSUM        ;{3}  Begin new checksum
-   188 089E 20 48 09		            jsr L06FF         ;[12] Compensation   
-   189 08A1 EA			            nop               ;[2]  Compensation
-   190 08A2 EA			            nop               ;[2]  Compensation   
-   191 08A3 4C B2 08		            jmp HDR_TRANS     ;{3}  Perform header state transition
-   192 				            
-   193
-   194 				;Setting BUFRLO,BUFRHI,BFENLO,BFENHI
-   195 				;State code is used for indexing, offset is 2            
-   196 08A6 99 30 00		HDR_BUF     sta BUFRLO-STATE_BUFLO,Y ;{5} Store buffer range value
-   197
-   198 				;Checksum for the header bytes            
-   199 08A9 A5 31		            lda CHKSUM              ;{3}
-   200 08AB 45 2F		            eor ICAX6Z              ;{3}
-   201 08AD 85 31		            sta CHKSUM              ;{3}
-   202 08AF 20 48 09		            jsr L06FF               ;[12] Compensation
-   203 				            
-   204 				;Transition to the new state
-   205 08B2 C8			HDR_TRANS   iny                     ;{2} Presume going to higher state
-   206 08B3 C0 06		            cpy #[STATE_BFENHI+1]   ;{2} Is the state past last buffer state?
-   207 08B5 D0 02		            bne PUT_STATE           ;{3} No,skip
-   208 08B7 A0 00		            ldy #STATE_DATA         ;{3} Reset to state data
-   209 08B9 84 36		PUT_STATE   sty LTEMP               ;{3} Store the new state
-   210 				            
-   211 08BB A0 C8		            ldy #200                ;{2} Reset pulse timer
-   212 08BD 4C 8D 08		            jmp NEXT_BYTE           ;{3} Go and get next byte
-   213
-   214 				;-------------------------------------------------------------------------------
-   215 				; Process segment data bytes
-   216 				; Timing information:
-   217 				;   Cycles spent before :        6
-   218 				;   Update checksum     :        9
-   219 				;   Byffer range check  :        15
-   220 				;   Placing byte to buf :        24
-   221 				;   Checking chsum      :        21 
-   222 				;   Pulse setup         :        5
-   223 				;                                                     Compensation 
-   224 				; Total processing one data byte: 6+9+15+24+5 =  59    0   => 59
-   225 				; Total for processing chksum   : 6+9+15+21+5 =  56    1*2 => 58
-   226 				;-------------------------------------------------------------------------------
-   227 08C0			L068E
-   228 				;Update checksum
-   229 08C0 A5 31		            lda CHKSUM        ;{3}
-   230 08C2 45 2F		            eor ICAX6Z        ;{3}
-   231 08C4 85 31		            sta CHKSUM        ;{3}
-   232
-   233 				;Verify if all data decoded            
-   234 08C6 A5 32		            lda BUFRLO        ;{3} Check if all bytes decoded
-   235 08C8 C5 34		            cmp BFENLO        ;{3} 
-   236 08CA A5 33		            lda BUFRHI        ;{3} 
-   237 08CC E5 35		            sbc BFENHI        ;{3}
-   238 08CE B0 11		            bcs SEGDONE       ;{3} If all decoded, skip to termination
-   239
-   240 				;Place segment byte to a buffer            
-   241 08D0 A0 00		            ldy #0            ;{2} Place byte to the buffer
-   242 08D2 A5 2F		            lda ICAX6Z        ;{3}
-   243 08D4 91 32		            sta (BUFRLO),Y    ;{6}
-   244 08D6 E6 32		            inc BUFRLO        ;{5} Update buffer pointer
-   245 08D8 D0 02		            bne L069A         ;{3} 
-   246 08DA E6 33		            inc BUFRHI        ;{5} 
-   247 				            
-   248 08DC A0 C8		L069A       ldy #200          ;{2} Reset pulse timer
-   249 08DE 4C 8D 08		            JMP NEXT_BYTE     ;{3} Go and get next byte
-   250
-   251 				;Done with segment
-   252 08E1 EA			SEGDONE     nop               ;[2] Compensation nop
-   253 08E2 A9 00		            lda #0            ;{2} Use CF=0 to indicate bad checksum
-   254 08E4 C5 31		            cmp CHKSUM        ;{3} 
-   255 08E6 90 22		            bcc L06C2         ;{3} If bad checksum, terminate decoding
-   256
-   257 08E8 A5 2D		            lda ICAX4Z        ;{3} What was the first byte
-   258 08EA 29 C0		            and #[128+64]     ;{2} Check for special flags
-   259 08EC D0 1B		            bne L06C1         ;{3} If set, the block ends
-   260 				            
-   261 08EE A9 01		            lda #STATE_ID     ;{2} Reset state to ID
-   262 08F0 85 36		            sta LTEMP         ;{3} 
-   263 				            
-   264 08F2 A0 C8		            ldy #200          ;{2} 
-   265 08F4 4C 8D 08		            jmp NEXT_BYTE     ;{3} And continue processing
-   266 				;-------------------------------------------------------------------------------
-   267 				; Get 8 bits
-   268 				;-------------------------------------------------------------------------------
-   269 08F7 A9 01		GET8BITS    lda #1            ;Prepare bit mask
-   270 08F9 85 2F		            sta ICAX6Z         
-   271 				            
-   272 08FB 20 1D 09		G8B_L       jsr L06D6         ;Measure width of the pulse
-   273 08FE 90 0A		            bcc L06C2         ;If no pulse, terminate decoding
-   274 0900 C0 E3		            cpy #227          ;Determine wide or narrow pulse
-   275 0902 26 2F		            rol ICAX6Z        ;Rotate bit mask
-   276 0904 A0 C6		            ldy #198          ;Set pulse width unit counter base value
-   277 0906 90 F3		            bcc G8B_L         ;If byte not finished, get next bit
-   278 				            
-   279 0908 60			            rts
-   280 				;-------------------------------------------------------------------------------
-   281 				; Terminate decoding
-   282 				;------------------------------------------------------------------------------- 
-   283 0909 38			L06C1       sec               ;Successful block reading           
-   284 090A A9 C0		L06C2       lda #192          ;Enable interrupts
-   285 090C 8D 0E D4		            sta NMIEN
-   286 090F 85 10		            sta POKMSK
-   287 0911 8D 0E D2		            sta IRQEN
-   288 				            
-   289 0914 A9 3C		            lda #60           ;Switch program recorder mode to standard           
-   290 0916 8D 02 D3		            sta PACTL         ;Motor OFF
-   291 0919 8D 03 D3		            sta PBCTL         ;Command OFF
-   292 091C 60			            rts               ;Return
-   293
-   294 				;-------------------------------------------------------------------------------
-   295 				; Detect pulses and edges
-   296 				;-------------------------------------------------------------------------------            
-   297 091D 20 22 09		L06D6       jsr L06DB         ;Wait for edge
-   298 0920 90 26		            bcc L06FF         ;If no edge, terminate
-   299 				            
-   300 0922 A2 04		L06DB       ldx #4            ;Delay
-   301 0924 CA			L06DD       dex               
-   302 0925 D0 FD		            bne L06DD
-   303 				            
-   304 0927 A5 30		            lda STATUS        ;Get prior status of DATA IN  
-   305 0929 4A			            lsr               ;Shift it
-   306 092A 09 10		            ora #$10          ;Color
-   307 092C 25 37		            and LTEMP+1       ;Display stripe (if mask on)
-   308 092E 8D 1A D0		            sta COLBK
-   309 				            
-   310 0931 C8			L06E8       iny               ;Increment pulse width unit counter
-   311 0932 F0 13		            beq L06FE         ;If wraparound, terminate
-   312 0934 A5 11		            lda BRKKEY        ;Check BREAK key
-   313 0936 F0 0D		            beq L06FC         ;If pressed, terminate
-   314 0938 AD 0F D2		            lda SKSTAT        ;Get SKSTAT
-   315 093B 29 10		            and #16           ;Determine DATA IN logical value
-   316 093D C5 30		            cmp STATUS        ;Compare with prior one
-   317 093F F0 F0		            beq L06E8         ;If the same, then no edge has been found
-   318 0941 85 30		            sta STATUS        ;Otherwise, there was an edge (0-1 or 1-0)
-   319 0943 38			            sec               ;Indicate edge found
-   320 0944 60			            rts               ;And return
-   321 0945 C6 11		L06FC       dec BRKKEY
-   322 0947 18			L06FE       clc
-   323 0948 60			L06FF       rts
-   324 				 
+    55 0807 48			            pha               ;Save the ID byte to stack
+    56 0808 29 40		            and #64           ;Check for INIT indication
+    57 080A F0 03		            beq NOT_INIT      ;If not, skip
+    58 080C 20 20 08		            jsr DOINIT        ;Go perform init jump
+    59 				            
+    60 080F 68			NOT_INIT    pla               ;Restore the ID byte
+    61 0810 29 80		            and #128          ;Check for EOF
+    62 0812 D0 03		            bne END_LOAD      ;If set, terminate loading
+    63 0814 4C 00 08		            jmp GOLOAD        ;If not, go and read next block    
+    64 				            
+    65 0817 20 1D 08		END_LOAD    jsr RUNIT         ;Run the loaded program
+    66 081A 4C 77 E4		            jmp COLDSV        ;Perform cold start after return
+    67 				            
+    68 081D 6C E0 02		RUNIT       jmp (RUNAD)       ;Run loaded program
+    69 0820 6C E2 02		DOINIT      jmp (INITAD)      ;Perform INIT jump
+    70 				            
+    71 				;-------------------------------------------------------------------------------
+    72 				; Load error - Display red screen and wait until RESET
+    73 				;-------------------------------------------------------------------------------            
+    74 0823 A9 18		HANDLE_ERROR lda #$18
+    75 0825 8D C6 02		             sta COLOR2
+    76 0828 8D C8 02		             sta COLOR4
+    77 082B 8D 1A D0		             sta COLBK
+    78 082E 8D 18 D0		             sta COLPF2
+    79 0831 8D 44 02		             sta COLDST       ;Ensure COLD start
+    80 0834 4C 34 08		ERR_LOOP     jmp ERR_LOOP     ;Endless loop
+    81 				;===============================================================================
+    82 				;Block decoding subroutine
+    83 				;Block is placed from: BUFRLO+256*BUFRHI
+    84 				;                to:   (BFENLO+256*BFENHI)-1
+    85 				;Register usage
+    86 				;Input:
+    87 				;  A - Identification byte - first byte of the block that is not part of the
+    88 				;      data
+    89 				;Output:
+    90 				;  CF - 1 - Block decoding OK
+    91 				;       0 - Block decoding failed           
+    92 				;
+    93 				;Fields used:
+    94 				; BUFRLO,BUFRHI,BFENLO,BFENHI - Buffer pointer
+    95 				; LTEMP   - State code
+    96 				; CHKSUM  - Checksum
+    97 				; LTEMP+1 - Display mask (0 no display, 255 display)
+    98 				; ICAX5Z  - Counter of pilot tone pulses
+    99 				; ICAX6Z  - Byte being decoded
+   100 				; STATUS  - Prior DATA IN logical value   
+   101 				; ICAX4Z  - ID byte store    
+   102 				;===============================================================================
+   103 				   
+   104 0837 A9 34		L0631       lda #52           ;Switch program recorder to turbo mode                                                             
+   105 0839 8D 02 D3		            sta PACTL         ;Motor ON
+   106 083C 8D 03 D3		            sta PBCTL         ;Command ON
+   107 				            
+   108 083F A9 80		            lda #128          ;Disable interrupts
+   109 0841 85 10		            sta POKMSK
+   110 0843 8D 0E D2		            sta IRQEN
+   111 				            
+   112 0846 A9 01		            lda #STATE_ID     ;Initial state
+   113 0848 85 36		            sta LTEMP
+   114 				            
+   115 084A 18			            clc               ;Clear work fields 
+   116 084B A0 00		            ldy #0
+   117 084D 84 30		            sty STATUS
+   118 084F 84 31		            sty CHKSUM
+   119 0851 8C 0E D4		            sty NMIEN
+   120 0854 8C 00 D4		            sty DMACLT
+   121 				;-------------------------------------------------------------------------------
+   122 				; Wait for 256 pilot tone pulses
+   123 				;-------------------------------------------------------------------------------           
+   124 0857 F0 03		L0650       beq L0652         ;If not equal, terminate decoding
+   125 0859 4C 0A 09		            jmp L06C2
+   126 085C 20 22 09		L0652       jsr L06DB         ;Wait for edge
+   127 085F 90 F6		            bcc L0650         ;If no edge, try again
+   128 				            
+   129 0861 A9 00		            lda #0            ;Clear           
+   130 0863 85 2E		            sta ICAX5Z        ; Number of pilot tone pulses 
+   131 0865 85 37		            sta LTEMP+1       ; Display mask (0 No stripes, 255 Stripes)
+   132 				            
+   133 0867 A0 B4		L065D       ldy #180          ;Set pulse width unit counter base value
+   134 0869 20 1D 09		L065F       jsr L06D6         ;Measure width of the pulse
+   135 086C 90 E9		            bcc L0650         ;If no pulse, start over
+   136 086E C0 D8		            cpy #216          ;Is the pulse too long?
+   137 0870 90 EA		            bcc L0652         ;Yes, start over
+   138 0872 E6 2E		            inc ICAX5Z        ;Increment pilot tone pulse counter
+   139 0874 D0 F1		            bne L065D         ;If not enough pilot tone pulses (255), get next
+   140 0876 C6 37		            dec LTEMP+1       ;More than 255 pilot tone pulses - display stripes
+   141
+   142 				;-------------------------------------------------------------------------------
+   143 				; Wait for synchronization (very narrow) pulse
+   144 				;-------------------------------------------------------------------------------
+   145 				            
+   146 0878 A0 D1		L066E       ldy #209          ;Set pulse width unit counter base value
+   147 087A 20 22 09		            jsr L06DB         ;Wait for edge
+   148 087D 90 D8		            bcc L0650         ;If no edge, start over
+   149 				            
+   150 087F C0 DE		            cpy #222          ;Pulse too wide to be a sync pulse?
+   151 0881 B0 F5		            bcs L066E         ;Yes, keep waiting
+   152 0883 20 22 09		            jsr L06DB         ;Wait for edge
+   153 0886 B0 03		            bcs NEXT_BYT1
+   154 0888 4C 0A 09		            jmp L06C2         ;If no edge, terminate decoding
+   155 				            
+   156 				;-------------------------------------------------------------------------------
+   157 				; Decode data
+   158 				;-------------------------------------------------------------------------------
+   159 				;Get next byte
+   160 088B A0 C6		NEXT_BYT1   ldy #198          ;Reset pulse timer
+   161 088D 20 F7 08		NEXT_BYTE   jsr GET8BITS      ;Start decoding the data
+   162
+   163 				;Determine if segment data byte or header            
+   164 0890 A4 36		L0683       ldy LTEMP         ;{3} Check state
+   165 0892 F0 2C		            beq L068E         ;{3} If zero, just place byte to the buffer
+   166
+   167 				;-------------------------------------------------------------------------------
+   168 				; Process block header bytes
+   169 				; Timing information
+   170 				;   Spent before       : 6
+   171 				;   Determine ID/buffer: 8
+   172 				;   Store ID and jump  : 9
+   173 				;   Set buffer         : 14
+   174 				;   Transition         : 13
+   175 				;   Pulse setup        : 5
+   176 				;                                                     Compensation
+   177 				; Total processing ID byte:      6+8+9+13+5 =  41     1*12 + 2*2 => 57
+   178 				; Total processing buffer setup: 6+8+14+13+5 = 46     1*12       => 58  
+   179
+   180 				;-------------------------------------------------------------------------------
+   181 				;Check for state            
+   182 0894 A5 2F		            lda ICAX6Z        ;{3} Hold the byte we just read
+   183 0896 C0 01		            cpy #STATE_ID     ;{2} Is this the initial byte?
+   184 0898 D0 0C		            bne HDR_BUF       ;{3} No, it muse be buffer setup
+   185 				            
+   186 				;Process the initial byte            
+   187 089A 85 2D		            sta ICAX4Z        ;{3}  Keep the value
+   188 089C 85 31		            sta CHKSUM        ;{3}  Begin new checksum
+   189 089E 20 48 09		            jsr L06FF         ;[12] Compensation   
+   190 08A1 EA			            nop               ;[2]  Compensation
+   191 08A2 EA			            nop               ;[2]  Compensation   
+   192 08A3 4C B2 08		            jmp HDR_TRANS     ;{3}  Perform header state transition
+   193 				            
+   194
+   195 				;Setting BUFRLO,BUFRHI,BFENLO,BFENHI
+   196 				;State code is used for indexing, offset is 2            
+   197 08A6 99 30 00		HDR_BUF     sta BUFRLO-STATE_BUFLO,Y ;{5} Store buffer range value
+   198
+   199 				;Checksum for the header bytes            
+   200 08A9 A5 31		            lda CHKSUM              ;{3}
+   201 08AB 45 2F		            eor ICAX6Z              ;{3}
+   202 08AD 85 31		            sta CHKSUM              ;{3}
+   203 08AF 20 48 09		            jsr L06FF               ;[12] Compensation
+   204 				            
+   205 				;Transition to the new state
+   206 08B2 C8			HDR_TRANS   iny                     ;{2} Presume going to higher state
+   207 08B3 C0 06		            cpy #[STATE_BFENHI+1]   ;{2} Is the state past last buffer state?
+   208 08B5 D0 02		            bne PUT_STATE           ;{3} No,skip
+   209 08B7 A0 00		            ldy #STATE_DATA         ;{3} Reset to state data
+   210 08B9 84 36		PUT_STATE   sty LTEMP               ;{3} Store the new state
+   211 				            
+   212 08BB A0 C8		            ldy #200                ;{2} Reset pulse timer
+   213 08BD 4C 8D 08		            jmp NEXT_BYTE           ;{3} Go and get next byte
+   214
+   215 				;-------------------------------------------------------------------------------
+   216 				; Process segment data bytes
+   217 				; Timing information:
+   218 				;   Cycles spent before :        6
+   219 				;   Update checksum     :        9
+   220 				;   Byffer range check  :        15
+   221 				;   Placing byte to buf :        24
+   222 				;   Checking chsum      :        21 
+   223 				;   Pulse setup         :        5
+   224 				;                                                     Compensation 
+   225 				; Total processing one data byte: 6+9+15+24+5 =  59    0   => 59
+   226 				; Total for processing chksum   : 6+9+15+21+5 =  56    1*2 => 58
+   227 				;-------------------------------------------------------------------------------
+   228 08C0			L068E
+   229 				;Update checksum
+   230 08C0 A5 31		            lda CHKSUM        ;{3}
+   231 08C2 45 2F		            eor ICAX6Z        ;{3}
+   232 08C4 85 31		            sta CHKSUM        ;{3}
+   233
+   234 				;Verify if all data decoded            
+   235 08C6 A5 32		            lda BUFRLO        ;{3} Check if all bytes decoded
+   236 08C8 C5 34		            cmp BFENLO        ;{3} 
+   237 08CA A5 33		            lda BUFRHI        ;{3} 
+   238 08CC E5 35		            sbc BFENHI        ;{3}
+   239 08CE B0 11		            bcs SEGDONE       ;{3} If all decoded, skip to termination
+   240
+   241 				;Place segment byte to a buffer            
+   242 08D0 A0 00		            ldy #0            ;{2} Place byte to the buffer
+   243 08D2 A5 2F		            lda ICAX6Z        ;{3}
+   244 08D4 91 32		            sta (BUFRLO),Y    ;{6}
+   245 08D6 E6 32		            inc BUFRLO        ;{5} Update buffer pointer
+   246 08D8 D0 02		            bne L069A         ;{3} 
+   247 08DA E6 33		            inc BUFRHI        ;{5} 
+   248 				            
+   249 08DC A0 C8		L069A       ldy #200          ;{2} Reset pulse timer
+   250 08DE 4C 8D 08		            JMP NEXT_BYTE     ;{3} Go and get next byte
+   251
+   252 				;Done with segment
+   253 08E1 EA			SEGDONE     nop               ;[2] Compensation nop
+   254 08E2 A9 00		            lda #0            ;{2} Use CF=0 to indicate bad checksum
+   255 08E4 C5 31		            cmp CHKSUM        ;{3} 
+   256 08E6 90 22		            bcc L06C2         ;{3} If bad checksum, terminate decoding
+   257
+   258 08E8 A5 2D		            lda ICAX4Z        ;{3} What was the first byte
+   259 08EA 29 C0		            and #[128+64]     ;{2} Check for special flags
+   260 08EC D0 1B		            bne L06C1         ;{3} If set, the block ends
+   261 				            
+   262 08EE A9 01		            lda #STATE_ID     ;{2} Reset state to ID
+   263 08F0 85 36		            sta LTEMP         ;{3} 
+   264 				            
+   265 08F2 A0 C8		            ldy #200          ;{2} 
+   266 08F4 4C 8D 08		            jmp NEXT_BYTE     ;{3} And continue processing
+   267 				;-------------------------------------------------------------------------------
+   268 				; Get 8 bits
+   269 				;-------------------------------------------------------------------------------
+   270 08F7 A9 01		GET8BITS    lda #1            ;Prepare bit mask
+   271 08F9 85 2F		            sta ICAX6Z         
+   272 				            
+   273 08FB 20 1D 09		G8B_L       jsr L06D6         ;Measure width of the pulse
+   274 08FE 90 0A		            bcc L06C2         ;If no pulse, terminate decoding
+   275 0900 C0 E3		            cpy #227          ;Determine wide or narrow pulse
+   276 0902 26 2F		            rol ICAX6Z        ;Rotate bit mask
+   277 0904 A0 C6		            ldy #198          ;Set pulse width unit counter base value
+   278 0906 90 F3		            bcc G8B_L         ;If byte not finished, get next bit
+   279 				            
+   280 0908 60			            rts
+   281 				;-------------------------------------------------------------------------------
+   282 				; Terminate decoding
+   283 				;------------------------------------------------------------------------------- 
+   284 0909 38			L06C1       sec               ;Successful block reading           
+   285 090A A9 C0		L06C2       lda #192          ;Enable interrupts
+   286 090C 8D 0E D4		            sta NMIEN
+   287 090F 85 10		            sta POKMSK
+   288 0911 8D 0E D2		            sta IRQEN
+   289 				            
+   290 0914 A9 3C		            lda #60           ;Switch program recorder mode to standard           
+   291 0916 8D 02 D3		            sta PACTL         ;Motor OFF
+   292 0919 8D 03 D3		            sta PBCTL         ;Command OFF
+   293 091C 60			            rts               ;Return
+   294
+   295 				;-------------------------------------------------------------------------------
+   296 				; Detect pulses and edges
+   297 				;-------------------------------------------------------------------------------            
+   298 091D 20 22 09		L06D6       jsr L06DB         ;Wait for edge
+   299 0920 90 26		            bcc L06FF         ;If no edge, terminate
+   300 				            
+   301 0922 A2 04		L06DB       ldx #4            ;Delay
+   302 0924 CA			L06DD       dex               
+   303 0925 D0 FD		            bne L06DD
+   304 				            
+   305 0927 A5 30		            lda STATUS        ;Get prior status of DATA IN  
+   306 0929 4A			            lsr               ;Shift it
+   307 092A 09 10		            ora #$10          ;Color
+   308 092C 25 37		            and LTEMP+1       ;Display stripe (if mask on)
+   309 092E 8D 1A D0		            sta COLBK
+   310 				            
+   311 0931 C8			L06E8       iny               ;Increment pulse width unit counter
+   312 0932 F0 13		            beq L06FE         ;If wraparound, terminate
+   313 0934 A5 11		            lda BRKKEY        ;Check BREAK key
+   314 0936 F0 0D		            beq L06FC         ;If pressed, terminate
+   315 0938 AD 0F D2		            lda SKSTAT        ;Get SKSTAT
+   316 093B 29 10		            and #16           ;Determine DATA IN logical value
+   317 093D C5 30		            cmp STATUS        ;Compare with prior one
+   318 093F F0 F0		            beq L06E8         ;If the same, then no edge has been found
+   319 0941 85 30		            sta STATUS        ;Otherwise, there was an edge (0-1 or 1-0)
+   320 0943 38			            sec               ;Indicate edge found
+   321 0944 60			            rts               ;And return
+   322 0945 C6 11		L06FC       dec BRKKEY
+   323 0947 18			L06FE       clc
+   324 0948 60			L06FF       rts
+   325 				 

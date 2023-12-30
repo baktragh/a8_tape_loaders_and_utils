@@ -54,11 +54,12 @@ GOLOAD      jsr L0631         ;Call Turbo 2000 block decoding subroutine
             bcc HANDLE_ERROR  ;If error occured, handle error
             
             lda ICAX4Z        ;Check ID byte
+            pha               ;Save the ID byte to stack
             and #64           ;Check for INIT indication
             beq NOT_INIT      ;If not, skip
             jsr DOINIT        ;Go perform init jump
             
-NOT_INIT    lda ICAX4Z        ;Check ID byte
+NOT_INIT    pla               ;Restore the ID byte from stack
             and #128          ;Check for EOF
             bne END_LOAD      ;If set, terminate loading
             jmp GOLOAD        ;If not, go and read next block    
