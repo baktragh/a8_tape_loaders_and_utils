@@ -95,8 +95,6 @@ READY_SAVE         lda #<DATA_TABLE        ;Reset the table and counter
                    sta ZP_TAB_PTR_LO
                    lda #>DATA_TABLE
                    sta ZP_TAB_PTR_HI
-                   ldx #0
-                   stx CURR_INDEX
 
                    jsr WAIT_FOR_START     ;Wait for START key
                    jsr BEEP
@@ -114,19 +112,19 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    iny
                    lda (ZP_TAB_PTR_LO),Y
                    sta BFENHI
- 
-                   ldy #0                 ;Get ID byte
+
+                   lda BUFRLO
+                   and BUFRHI
+                   and BFENLO
+                   and BFENHI
+                   cmp #$FF
+                   beq READY_SAVE
+    
+SAVE_DOBLOCK       ldy #0                 ;Get ID byte
                    lda (BUFRLO),Y
                    sta ID_BYTE
                    
                    jsr WRITE_BLOCK
-
-                   ldx CURR_INDEX               ;Get current index
-                   inx                          ;Increment current index 
-                   cpx MAX_INDEX                ;Done writing?
-                   beq READY_SAVE               ;Yes, back to the beginning
-
-                   stx CURR_INDEX               ;Write back new index
 
                    clc                          ;Increment table pointer
                    lda #4
@@ -352,8 +350,6 @@ LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
 ;=======================================================================
 ; DATA AREAS
 ;=======================================================================
-CURR_INDEX    .BYTE 0
-MAX_INDEX     .BYTE 7  
 ID_BYTE       .BYTE 0         
 ;=======================================================================
 ; Tape data
@@ -365,8 +361,7 @@ DATA_TABLE   .WORD DATA_1_START,DATA_1_END-1
              .WORD DATA_5_START,DATA_5_END-1
              .WORD DATA_6_START,DATA_6_END-1
              .WORD DATA_7_START,DATA_7_END-1
-;             .WORD DATA_8_START,DATA_8_END-1
-;             .WORD DATA_9_START,DATA_9_END-1
+             .WORD $FFFF,$FFFF
 DATA_1_START
              INS "data1.dat"
 DATA_1_END   
@@ -388,12 +383,6 @@ DATA_6_END
 DATA_7_START 
              INS "data7.dat"
 DATA_7_END
-;DATA_8_START 
-;             INS "data8.dat"
-;DATA_8_END
-;DATA_9_START 
-;             INS "data9.dat"
-;DATA_9_END
 
 
 ;=======================================================================
