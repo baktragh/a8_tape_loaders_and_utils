@@ -48,11 +48,14 @@
                 START_ADDR    = 3072
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
-; loading data into the screen memory does no harm.
+; loading data into the screen memory does no harm. Also ensure
+; that RESET results in cold start.
 ;=======================================================================
                    ORG  START_ADDR      
-                   lda #0
-                   sta SDMCTL
+                   ldy #0
+                   sty SDMCTL
+                   iny
+                   sty COLDST
                    jsr IN_WBV
                    jsr IN_WBV
 
@@ -341,52 +344,14 @@ DLIST      .BYTE 112,112,112
 ; Screen lines
 ;-----------------------------------------------------------------------
 ;                          0123456789012345678901234567890123456789   
-LINE_NAME   .BYTE         "TRAIN ExpressLoading"
+LINE_NAME   .BYTE         "tttttttttttttttttttt"
 
-LINE_TITLE  .BYTE         "Turbo 2000 Self-Extractor               "
+LINE_TITLE  .BYTE         "Turbo 2000 Self-Extractor            ppp"
 
 LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
             .BYTE         "Then press START to begin recording.    "                     
 ;=======================================================================
 ; DATA AREAS
 ;=======================================================================
-ID_BYTE       .BYTE 0         
-;=======================================================================
-; Tape data
-;=======================================================================
-DATA_TABLE   .WORD DATA_1_START,DATA_1_END-1
-             .WORD DATA_2_START,DATA_2_END-1
-             .WORD DATA_3_START,DATA_3_END-1
-             .WORD DATA_4_START,DATA_4_END-1
-             .WORD DATA_5_START,DATA_5_END-1
-             .WORD DATA_6_START,DATA_6_END-1
-             .WORD DATA_7_START,DATA_7_END-1
-             .WORD $FFFF,$FFFF
-DATA_1_START
-             INS "data1.dat"
-DATA_1_END   
-DATA_2_START 
-             INS "data2.dat"
-DATA_2_END
-DATA_3_START 
-             INS "data3.dat"
-DATA_3_END
-DATA_4_START 
-             INS "data4.dat"
-DATA_4_END
-DATA_5_START 
-             INS "data5.dat"
-DATA_5_END
-DATA_6_START 
-             INS "data6.dat"
-DATA_6_END
-DATA_7_START 
-             INS "data7.dat"
-DATA_7_END
-
-
-;=======================================================================
-; RUN SEGMENT
-;=======================================================================
-           ORG RUNAD
-.WORD      START_ADDR
+ID_BYTE     .BYTE 0       
+            DATA_TABLE=*  
