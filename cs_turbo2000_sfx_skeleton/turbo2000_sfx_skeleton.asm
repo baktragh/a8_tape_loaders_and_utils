@@ -328,28 +328,23 @@ WR_SAFPULSE    lda #3                 ;Write safety pulse
                sta AUDCTL
                jmp WR_TERM            ;Terminate
                
-WR_TERM        lda #255
-               sta PORTB
-               lda #64
+WR_TERM        lda #64
                sta NMIEN
                sta IRQEN
                jsr WAIT_FOR_VBLANK   
-               lda #34                ;New
-               sta DMACLT             ;New
+               lda #34                
+               sta DMACLT             
                rts
                
 WR_RESET_ALL   ldy #0
                sty STATUS
                sty CHKSUM
                sty NMIEN
-               jsr WAIT_FOR_VBLANK
                sty DMACLT
-               lda #254
+               jsr WAIT_FOR_VBLANK
                sty IRQEN
-               sta PORTB
                clc
                rts               
-
 ;=======================================================================
 ; DISPLAY DATA
 ;=======================================================================
