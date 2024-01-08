@@ -7,7 +7,7 @@
 ; to a cassette.
 ;
 ; This can be useful, when the only cassette recorder at hand is one of the
-; atari data recorders. Vendors of the original software can
+; Atari data recorders. Vendors of the original software can
 ; include this self-extractor in the package to let their customers
 ; to create their own self-installed tape recording.  
 ; 
@@ -21,9 +21,9 @@
 ;
 ; Limitations:
 ; - Restricted to 2270 bps (base Turbo 2000 speed)
-; - Around 43 KB is left for the data. Larger files can be split into
+; - Around 45 KB is left for the data. Larger files can be split into
 ;   multiple parts and recorded sequentially.
-; - The self-extractrs begin from address $0C00.
+; - The self-extractors begin at address $0C00.
 ;   The self-extractors should be loaded by miniature binary loaders, not
 ;   by full-size disk operating systems.   
  
@@ -32,8 +32,31 @@
 ; practically usable are the following:
 ; Turbo 2000 base format 
 ; Turbo 2000 - kilobyte blocks
-; Turbo 2000 - ChainLoading, BlockLoading, ExpressLoading                  
+; Turbo 2000 - ChainLoading, BlockLoading, ExpressLoading
+; Omicron Turbo - BlockLoading, ExpressLoading, Kilobyte Blocks, Twokilobyte
+; blocks.      
 ; 
+; How to use this skeleton.
+; This skeleton holds the following segments
+; 1. Initialization code
+; 2. INIT vector pointing to the initialization code
+; 3. Mainline code.
+;
+; The user of the skeleton is supposed to append the following segments:
+; - A data segment that begins at DATA_TABLE address. This segment holds
+;   the turbo block table followed by turbo block data.
+; - A RUN vector pointing to the START_ADDR address    
+;
+; The user of the skeleton is supposed to zap the following areas:
+; LINE_NAME with the name of the program (internal code)
+; The last three characters of the LINE_TITLE with partition number (int. code)       
+; 
+; The turbo block table is a table of 4-byte items, each item represents
+; a buffer range for the turbo 2000 block write routine. The last
+; item in the table is a termination mark - $FF $FF $FF $FF.
+; After the table, the data of the turbo blocks follows. Note that
+; the turbo blocks must include the checksum. The turbo 2000 block write
+; routine calculates the checksum, but doesn't record it.
 ;=======================================================================
            
                  ICL "equates.asm" 
