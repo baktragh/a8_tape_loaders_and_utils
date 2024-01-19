@@ -48,8 +48,9 @@
 ; - A RUN vector pointing to the START_ADDR address    
 ;
 ; The user of the skeleton is supposed to zap the following areas:
-; LINE_NAME with the name of the program (internal code)
-; The last three characters of the LINE_TITLE with partition number (int. code)       
+; 1. LINE_NAME with the name of the program (internal code)
+; 2. The first 36 characters of the LINTE_TITLE (internal code)
+; 3. The last three characters of the LINE_TITLE with partition number (i.c.)       
 ; 
 ; The turbo block table is a table of 4-byte items, each item represents
 ; a buffer range for the turbo 2000 block write routine. The last
@@ -364,7 +365,7 @@ DLIST      .BYTE 112,112,112
 ;                          0123456789012345678901234567890123456789   
 LINE_NAME   .BYTE         "tttttttttttttttttttt"
 
-LINE_TITLE  .BYTE         "Turbo 2000 Self-Extractor            ppp"
+LINE_TITLE  .BYTE         "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn ppp"
 
 LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
             .BYTE         "Then press START to begin recording.    "                     
