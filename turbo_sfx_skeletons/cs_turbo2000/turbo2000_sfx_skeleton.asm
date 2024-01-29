@@ -52,9 +52,10 @@
 ; 2. The first 36 characters of the LINTE_TITLE (internal code)
 ; 3. The last three characters of the LINE_TITLE with partition number (i.c.)       
 ; 
-; The turbo block table is a table of 4-byte items, each item represents
-; a buffer range for the turbo 2000 block write routine. The last
-; item in the table is a termination mark - $FF $FF $FF $FF.
+; The turbo block table is a table of 5-byte items, each item represents
+; a buffer range for the turbo 2000 block write routine, followed by a
+; block flag byte.
+; The last item in the table is a termination mark - $FF $FF $FF $FF.
 ; After the table, the data of the turbo blocks follows. Note that
 ; the turbo blocks must include the checksum. The turbo 2000 block write
 ; routine calculates the checksum, but doesn't record it.
@@ -66,10 +67,14 @@
 ;=======================================================================
 ; Private constants
 ;=======================================================================
-                ZP_TAB_PTR_LO = 128
-                ZP_TAB_PTR_HI = 129
-                VBI_VCOUNT    = 124
-                START_ADDR    = 3072
+                ZP_TAB_PTR_LO   = 128
+                ZP_TAB_PTR_HI   = 129
+                VBI_VCOUNT      = 124
+                START_ADDR      = 2944
+                ZP_BLOCKFLAG    = 130
+;
+                BF_NOSILENCE    = 0x80
+                BF_LONGPILOT    = 0x40
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -126,6 +131,13 @@ READY_SAVE         lda #<DATA_TABLE        ;Reset the table and counter
                    jsr WAIT_FOR_START     ;Wait for START key
                    jsr BEEP
 
+;From now on, disable interrupts and DMA, keep motor ON until the contents
+;is fully recorded.
+;-----------------------------------------------------------------------
+                   jsr RECENV_INIT
+                   lda #52
+                   sta PACTL
+                   jsr SHORT_DELAY
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
@@ -139,29 +151,42 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    iny
                    lda (ZP_TAB_PTR_LO),Y
                    sta BFENHI
+                   iny
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_BLOCKFLAG 
 
                    lda BUFRLO
                    and BUFRHI
                    and BFENLO
                    and BFENHI
                    cmp #$FF
-                   beq READY_SAVE
+                   beq SAVE_TERM
     
-SAVE_DOBLOCK       ldy #0                 ;Get ID byte
+SAVE_DOBLOCK       ldy #0                       ;Get ID byte
                    lda (BUFRLO),Y
                    sta ID_BYTE
                    
                    jsr WRITE_BLOCK
 
                    clc                          ;Increment table pointer
-                   lda #4
+                   lda #5
                    adc ZP_TAB_PTR_LO
                    sta ZP_TAB_PTR_LO
                    bcc SAVE_CONT
                    inc ZP_TAB_PTR_HI  
-SAVE_CONT
-                   jsr SHORT_DELAY              ;Delay between blocks
-                   jmp SAVE_LOOP                ;Continue saving.
+
+;Add some gaps between blocks
+SAVE_CONT          bit ZP_BLOCKFLAG             ;Check block flag
+                   bmi SAVE_NODELAY             ;If 0x80, skip the delay
+                   jsr SHORT_DELAY              ;Otherwise add a gap
+SAVE_NODELAY
+SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
+;-----------------------------------------------------------------------
+SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
+                   lda #60                      ;Motor off
+                   sta PACTL
+; 
+                   jmp READY_SAVE                   
                    
 ;=======================================================================
 ; KEYBOARD SUBROUTINES
@@ -176,7 +201,6 @@ WFS_LOOP           lda CONSOL             ;What keys?
                    beq WFS_DONE           ;Yes, we are done
                    bne WFS_LOOP
 WFS_DONE           rts
-                   
                    
 ;=======================================================================
 ; OTHER SUBROUTINES
@@ -225,24 +249,20 @@ DELAY_LOOP_I       stx WSYNC
 ; A              - Identification byte
 ;=======================================================================
 WRITE_BLOCK    pha                    ;Keep A in the stack
-               lda #52                ;Prepare tape drive for writing
-               sta PACTL
-               jsr SHORT_DELAY        ;Let motor get to full speed
 
-               jsr WR_RESET_ALL       ;Reset coder
                pla                    ;Restore A
                sta ICAX6Z             ;Keep identification byte
                sta CHKSUM             ;Use as base for check sum
             
                lda #192
                sta AUDCTL
-               
-;              ldx #32                ;Generate pilot tone  
-               ldx #12                ;Generate pilot tone                 
-               lda ICAX6Z
-               beq WR_PILOTLEN        ;If ID zero, skip
-;              ldx #12
-               ldx #12
+
+               ldx #12                ;Presume normal pilot tone
+               bit ZP_BLOCKFLAG       ;Check longer pilot flag (0x40)
+               bvc WR_PILOT           ;If not set, skip
+               ldx #20                ;Setup elongated pilot tone
+
+WR_PILOT       
 WR_PILOTLEN    stx STATUS             ;Keep status
 WR_PILOTL1     dey
                bne WR_PILOTL1         ;Wait
@@ -260,8 +280,7 @@ WR_PILOTL2     dey
                dey
                dec STATUS              
                bne WR_PILOTL1         ;Continue with part of pilot tone
-
-            
+;            
                ldy #32                ;Generate SYNC pulse
 WR_SYNC1       dey
                bne WR_SYNC1
@@ -323,21 +342,24 @@ WR_GBYTE_W4    dey                    ;Keep waiting
             
 WR_SAFPULSE    lda #3                 ;Write safety pulse
                sta SKCTL
-               lda #60                ;Stop motor
-               sta PACTL
                lda #0
                sta AUDCTL
-               jmp WR_TERM            ;Terminate
-               
-WR_TERM        lda #64
+               rts                    ;Terminate writing
+;-------------------------------------------------------------------------------
+; Terminate recording environment
+;-------------------------------------------------------------------------------               
+RECENV_TERM    lda #64
                sta NMIEN
                sta IRQEN
                jsr WAIT_FOR_VBLANK   
                lda #34                
                sta DMACLT             
                rts
-               
-WR_RESET_ALL   ldy #0
+
+;-------------------------------------------------------------------------------
+; Initiate recording environment;
+;-------------------------------------------------------------------------------               
+RECENV_INIT   ldy #0
                sty STATUS
                sty CHKSUM
                sty NMIEN
@@ -363,14 +385,18 @@ DLIST      .BYTE 112,112,112
 ; Screen lines
 ;-----------------------------------------------------------------------
 ;                          0123456789012345678901234567890123456789   
-LINE_NAME   .BYTE         "tttttttttttttttttttt"
+LINE_NAME   .BYTE         "nnnnnnnnnnnnnnnnnnnn"
 
-LINE_TITLE  .BYTE         "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn ppp"
+LINE_TITLE  .BYTE         "tttttttttttttttttttttttttttttttttttt ppp"
 
 LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
             .BYTE         "Then press START to begin recording.    "                     
 ;=======================================================================
 ; DATA AREAS
 ;=======================================================================
-ID_BYTE     .BYTE 0       
+ID_BYTE          .BYTE 0       
+HEAD_STATE_SETUP .BYTE 0
+;=======================================================================
+; Segment data table
+;=======================================================================
             DATA_TABLE=*  
