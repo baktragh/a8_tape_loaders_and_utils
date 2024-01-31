@@ -257,10 +257,10 @@ WRITE_BLOCK    pha                    ;Keep A in the stack
                lda #192
                sta AUDCTL
 
-               ldx #12                ;Presume normal pilot tone
+               ldx #14                ;Presume normal pilot tone
                bit ZP_BLOCKFLAG       ;Check longer pilot flag (0x40)
                bvc WR_PILOT           ;If not set, skip
-               ldx #20                ;Setup elongated pilot tone
+               ldx #22                ;Setup elongated pilot tone
 
 WR_PILOT       
 WR_PILOTLEN    stx STATUS             ;Keep status
@@ -359,7 +359,7 @@ RECENV_TERM    lda #64
 ;-------------------------------------------------------------------------------
 ; Initiate recording environment;
 ;-------------------------------------------------------------------------------               
-RECENV_INIT   ldy #0
+RECENV_INIT    ldy #0
                sty STATUS
                sty CHKSUM
                sty NMIEN
