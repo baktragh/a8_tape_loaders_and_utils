@@ -65,7 +65,7 @@ IN_WBV_L           cmp VCOUNT
                    sta SDMCTL
                    lda #0
                    sta COLOR2
-                   lda #$1A
+                   lda #$3A
                    sta COLOR0
                    sta COLOR1                                       
 ;-----------------------------------------------------------------------
@@ -103,12 +103,21 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
                    sta ZP_BLOCKFLAG 
 
-                   lda BUFRLO
+                   lda BUFRLO             ;Check for termination indicator
                    and BUFRHI
                    and BFENLO
                    and BFENHI
                    cmp #$FF
                    beq SAVE_TERM
+                                          ;Determine the speed
+
+                   lda ZP_BLOCKFLAG             ;Check block flag
+                   and #1                       ;Check for high speed
+                   beq SAVE_BASE_SPEED          ;Just low speed, skip
+                   jsr ZAP_HIGH_SPEED           ;Setup high speed
+                   jmp SAVE_DOBLOCK             ;And jump over
+
+SAVE_BASE_SPEED    jsr ZAP_BASE_SPEED   
     
 SAVE_DOBLOCK       ldy #0                       ;Get ID byte
                    lda (BUFRLO),Y
@@ -328,14 +337,72 @@ ZAP_BASE_SPEED
 ZAP_HIGH_SPEED
               lda #<HIGH_SPEED_TABLE
               ldx #>HIGH_SPEED_TABLE
+
 ZAP_DO        sta ZP_ZAP_PTRLO
               stx ZP_ZAP_PTRHI
 
-              
+              ldy #0
+;Zap00
+              lda (ZP_ZAP_PTR),Y
+              sta Z00+1
+              iny
+;Zap01
+              lda (ZP_ZAP_PTR),Y
+              sta Z01+1
+              iny
+;Zap02
+              lda (ZP_ZAP_PTR),Y
+              sta Z02+1
+              iny
+;Zap03
+              lda (ZP_ZAP_PTR),Y
+              sta Z03+1
+              iny
+;Zap04
+              lda (ZP_ZAP_PTR),Y
+              sta Z04+1
+              iny
+;Zap05
+              lda (ZP_ZAP_PTR),Y
+              sta Z05+1
+              iny
+;Zap06
+              lda (ZP_ZAP_PTR),Y
+              sta Z06+1
+              iny
+;Zap07
+              lda (ZP_ZAP_PTR),Y
+              sta Z07+1
+              iny
+;Zap08
+              lda (ZP_ZAP_PTR),Y
+              sta Z08+1
+              iny
+;Zap09
+              lda (ZP_ZAP_PTR),Y
+              sta Z09+1
+              iny
+;Zap10
+              lda (ZP_ZAP_PTR),Y
+              sta Z10+1
+              iny
+;Zap11
+              lda (ZP_ZAP_PTR),Y
+              sta Z11+1
+              iny
+;
+              rts
 ;------------------------------------------------------------------------------
-; 
+; Speed tables
+; First two values - standard, elongated pilot tone
+; Other values - timing constants to control pulse width
+;------------------------------------------------------------------------------
 BASE_SPEED_TABLE
+             .BYTE 14,22
+             .BYTE 119,118,32,39,43,48,46,94,44,32
 HIGH_SPEED_TABLE
+             .BYTE $14,$1C
+             .BYTE $4F,$4E,$22,$27,$23,$28,$26,$4E,$24,$18
 ;=======================================================================
 ; DISPLAY DATA
 ;=======================================================================
