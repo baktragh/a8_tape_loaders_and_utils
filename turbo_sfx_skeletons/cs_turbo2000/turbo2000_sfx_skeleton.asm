@@ -233,7 +233,7 @@ WFV_1              cmp VCOUNT
 ;-----------------------------------------------------------------------
 ; Short delay
 ;-----------------------------------------------------------------------                   
-SHORT_DELAY        ldy #32
+SHORT_DELAY        ldy #44
 DELAY_LOOP_E       ldx #255            
 DELAY_LOOP_I       stx WSYNC
                    dex
