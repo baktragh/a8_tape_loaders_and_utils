@@ -1,5 +1,5 @@
 ;=======================================================================
-; Jumbo Self-extractor header   
+; Composite Self-extractor header   
 ; Assemble with the MADS assembler
 ;=======================================================================
            

@@ -1,5 +1,5 @@
 ;=======================================================================
-; Jumbo Self-extractor tail   
+; Composite Self-extractor tail   
 ; Assemble with the MADS assembler
 ;=======================================================================
            
