@@ -16,6 +16,12 @@
 ;-----------------------------------------------------------------------
 ;Initialization
 ;-----------------------------------------------------------------------
+                   lda #$20
+                   sta COLOR2
+                   sta COLOR4
+                   lda #12
+                   sta COLOR1
+
                    jsr WAIT_FOR_VBLANK
 
                    sei                                 
@@ -28,15 +34,14 @@
                    jsr WAIT_FOR_VBLANK ;Enable the screen
                    lda #34
                    sta SDMCTL
-                   lda #0
-                   sta COLOR2
-                   lda #$1A
-                   sta COLOR0
-                   sta COLOR1
                                        
                    jsr WAIT_FOR_START     ;Wait for START key
-                   jsr BEEP
 
+                   lda #0
+                   sta COLOR4 
+                   jsr WAIT_FOR_VBLANK
+
+                   jsr BEEP
                    rts                    ;Back to the binary loader
 ;=======================================================================
 ; KEYBOARD SUBROUTINES
@@ -88,18 +93,19 @@ WFV_1              cmp VCOUNT
 ;-----------------------------------------------------------------------
 DLIST      .BYTE 112,112,112
            .BYTE 112,112
-           .BYTE 112,112
+           .BYTE 112,112,112,112
            .BYTE 2+64,<LINE_TITLE,>LINE_TITLE
-           .BYTE 112,112,112
-           .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2
+           .BYTE 112,112,112,112
+           .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2,2
            .BYTE 65,<DLIST,>DLIST
 ;-----------------------------------------------------------------------
 ; Screen lines
 ;-----------------------------------------------------------------------
 LINE_TITLE  .BYTE         "tttttttttttttttttttttttttttttttttttttttt"
 
-LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
-            .BYTE         "Then press START to begin recording.    "                     
+LINE_INSTR  .BYTE         "1. Insert blank tape                    " 
+            .BYTE         "2. Press PLAY+RECORD                    "
+            .BYTE         "3. Press START to begin recording       " 
 ;-----------------------------------------------------------------------
 ; INIT Vector
 ;-----------------------------------------------------------------------
