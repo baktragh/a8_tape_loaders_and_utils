@@ -41,7 +41,6 @@
                    sta COLOR4 
                    jsr WAIT_FOR_VBLANK
 
-                   jsr BEEP
                    rts                    ;Back to the binary loader
 ;=======================================================================
 ; KEYBOARD SUBROUTINES
@@ -61,22 +60,6 @@ WFS_DONE           rts
 ; OTHER SUBROUTINES
 ;=======================================================================                   
 ;-----------------------------------------------------------------------
-; Beep
-;-----------------------------------------------------------------------                   
-BEEP               ldx #200
-BEEP_LOOP          lda #8
-                   sta CONSOL
-                   sta WSYNC
-                   sta WSYNC
-                   lda #0
-                   sta CONSOL
-                   sta WSYNC
-                   sta WSYNC
-                   dex
-                   bne BEEP_LOOP
-                   rts
-                   
-;-----------------------------------------------------------------------
 ; Wait for VBLANK
 ;-----------------------------------------------------------------------
 WAIT_FOR_VBLANK    php
@@ -94,15 +77,17 @@ WFV_1              cmp VCOUNT
 DLIST      .BYTE 112,112,112
            .BYTE 112,112
            .BYTE 112,112,112,112
-           .BYTE 2+64,<LINE_TITLE,>LINE_TITLE
+           .BYTE 2+64,<LINE_TITLE1,>LINE_TITLE1,2
            .BYTE 112,112,112,112
-           .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2,2
+           .BYTE 2,16,2,2,2
            .BYTE 65,<DLIST,>DLIST
 ;-----------------------------------------------------------------------
 ; Screen lines
 ;-----------------------------------------------------------------------
-LINE_TITLE  .BYTE         "tttttttttttttttttttttttttttttttttttttttt"
+LINE_TITLE1 .BYTE         "tttttttttttttttttttttttttttttttttttttttt"
+LINE_TITLE2 .BYTE         "tttttttttttttttttttttttttttttttttttttttt"
 
+LINE_BANNER .BYTE         "Composite Tape Self-Extractor           "
 LINE_INSTR  .BYTE         "1. Insert blank tape                    " 
             .BYTE         "2. Press PLAY+RECORD                    "
             .BYTE         "3. Press START to begin recording       " 
