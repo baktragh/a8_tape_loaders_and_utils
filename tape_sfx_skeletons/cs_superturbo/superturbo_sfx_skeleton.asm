@@ -1,8 +1,6 @@
 ;=======================================================================
 ; Super Turbo Self-extractor skeleton   
 ; Assemble with the MADS assembler
-;
-;
 ;=======================================================================
            
                  ICL "equates.asm" 
@@ -14,11 +12,13 @@
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
                 VBI_VCOUNT      = 124
-                START_ADDR      = 2944
+                START_ADDR      = 2912
                 ZP_BLOCKFLAG    = 130
-                ZP_ZAP_PTRLO    = 131
-                ZP_ZAP_PTRHI    = 132
+                ZP_ID_BYTE      = 131
+                ZP_ZAP_PTRLO    = 132
+                ZP_ZAP_PTRHI    = 133
                 ZP_ZAP_PTR      = ZP_ZAP_PTRLO 
+              
 ;
                 BF_NOSILENCE    = 0x80
                 BF_LONGPILOT    = 0x40
@@ -48,10 +48,38 @@ IN_WBV_L           cmp VCOUNT
 ; MAINLINE CODE
 ;=======================================================================
                    ORG START_ADDR
+                   jmp ENTRY_ADDR
+;-----------------------------------------------------------------------
+; Screen lines
+;-----------------------------------------------------------------------
+;                          0123456789012345678901234567890123456789   
+LINE_NAME   .BYTE         "nnnnnnnnnnnnnnnnnnnn"
+
+LINE_TITLE  .BYTE         "tttttttttttttttttttttttttttttttttttt ppp"
+
+LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
+            .BYTE         "Then press START to begin recording.    "      
+;-----------------------------------------------------------------------
+; Configuration
+;-----------------------------------------------------------------------
+CFG_FLAGS  .BYTE  0
+           CFG_F_COMPOSITE = $80
+           CFG_F_LONGGAP   = $40
+;------------------------------------------------------------------------------
+; Speed tables
+; First two values - standard, elongated pilot tone
+; Other values - timing constants to control pulse width
+;------------------------------------------------------------------------------
+BASE_SPEED_TABLE
+             .BYTE 14,22
+             .BYTE 119,118,32,39,43,48,46,94,44,32
+HIGH_SPEED_TABLE
+             .BYTE $14,$1C
+             .BYTE $4F,$4E,$22,$27,$23,$28,$26,$4E,$24,$18
 ;-----------------------------------------------------------------------
 ;Initialization
 ;-----------------------------------------------------------------------
-                   jsr WAIT_FOR_VBLANK
+ENTRY_ADDR         jsr WAIT_FOR_VBLANK
 
                    sei                                 
                    lda #<DLIST          ;Setup display list
@@ -76,16 +104,24 @@ READY_SAVE         lda #<DATA_TABLE        ;Reset the table and counter
                    lda #>DATA_TABLE
                    sta ZP_TAB_PTR_HI
 
+                   bit CFG_FLAGS
+                   bmi SKIP_START         ;If $80 (composite)
                    jsr WAIT_FOR_START     ;Wait for START key
-                   jsr BEEP
+SKIP_START         jsr BEEP
 
-;From now on, disable interrupts and DMA, keep motor ON until the contents
-;is fully recorded.
 ;-----------------------------------------------------------------------
+;From now on, disable interrupts and DMA, keep motor ON until the
+;contents is fully recorded.
                    jsr RECENV_INIT
                    lda #52
                    sta PACTL
-                   jsr SHORT_DELAY
+
+                   bit CFG_FLAGS          ;Check if long gap requested
+                   bvc NORM_GAP           ;No, skip to normal delay
+  
+                   ldy #240               ;Long gap
+                   jsr DELAY_LOOP_E       ;Make long gap
+NORM_GAP           jsr SHORT_DELAY
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
@@ -121,7 +157,7 @@ SAVE_BASE_SPEED    jsr ZAP_BASE_SPEED
     
 SAVE_DOBLOCK       ldy #0                       ;Get ID byte
                    lda (BUFRLO),Y
-                   sta ID_BYTE
+                   sta ZP_ID_BYTE
                    
                    jsr WRITE_BLOCK
 
@@ -142,9 +178,11 @@ SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
                    lda #60                      ;Motor off
                    sta PACTL
-; 
-                   jmp READY_SAVE                   
-                   
+
+                   bit CFG_FLAGS                ;Check for composite($80)
+                   bmi SAVE_QUIT                ;If composite, quit       
+                   jmp READY_SAVE               ;Otherwise start over    
+SAVE_QUIT          rts        
 ;=======================================================================
 ; KEYBOARD SUBROUTINES
 ;=======================================================================                   
@@ -177,7 +215,6 @@ BEEP_LOOP          lda #8
                    dex
                    bne BEEP_LOOP
                    rts
-                   
 ;-----------------------------------------------------------------------
 ; Wait for VBLANK
 ;-----------------------------------------------------------------------
@@ -198,7 +235,6 @@ DELAY_LOOP_I       stx WSYNC
                    dey 
                    bne DELAY_LOOP_E
                    rts
-
 ;=======================================================================
 ; Write block of data
 ; BUFRLO,BUFRHI  - Right before first byte
@@ -299,7 +335,9 @@ Z11            ldy #32
 WR_GBYTE_W4    dey                    ;Keep waiting 
                bne WR_GBYTE_W4             
             
-WR_SAFPULSE    lda #3                 ;Write safety pulse
+WR_SAFPULSE    ldy #12                ;Ensure safety pulse is long enough.
+               jsr DELAY_LOOP_E
+               lda #3                 ;End the safety pulse
                sta SKCTL
                lda #0
                sta AUDCTL
@@ -314,7 +352,6 @@ RECENV_TERM    lda #64
                lda #34                
                sta DMACLT             
                rts
-
 ;-------------------------------------------------------------------------------
 ; Initiate recording environment;
 ;-------------------------------------------------------------------------------               
@@ -392,17 +429,6 @@ ZAP_DO        sta ZP_ZAP_PTRLO
               iny
 ;
               rts
-;------------------------------------------------------------------------------
-; Speed tables
-; First two values - standard, elongated pilot tone
-; Other values - timing constants to control pulse width
-;------------------------------------------------------------------------------
-BASE_SPEED_TABLE
-             .BYTE 14,22
-             .BYTE 119,118,32,39,43,48,46,94,44,32
-HIGH_SPEED_TABLE
-             .BYTE $14,$1C
-             .BYTE $4F,$4E,$22,$27,$23,$28,$26,$4E,$24,$18
 ;=======================================================================
 ; DISPLAY DATA
 ;=======================================================================
@@ -416,21 +442,10 @@ DLIST      .BYTE 112,112,112
            .BYTE $30
            .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2
            .BYTE 65,<DLIST,>DLIST
-;-----------------------------------------------------------------------
-; Screen lines
-;-----------------------------------------------------------------------
-;                          0123456789012345678901234567890123456789   
-LINE_NAME   .BYTE         "nnnnnnnnnnnnnnnnnnnn"
-
-LINE_TITLE  .BYTE         "tttttttttttttttttttttttttttttttttttt ppp"
-
-LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
-            .BYTE         "Then press START to begin recording.    "                     
 ;=======================================================================
 ; DATA AREAS
 ;=======================================================================
-ID_BYTE          .BYTE 0       
 ;=======================================================================
 ; Segment data table
 ;=======================================================================
-            DATA_TABLE=*  
+            DATA_TABLE=*

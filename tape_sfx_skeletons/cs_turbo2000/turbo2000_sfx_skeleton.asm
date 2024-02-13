@@ -50,7 +50,10 @@
 ; The user of the skeleton is supposed to zap the following areas:
 ; 1. LINE_NAME with the name of the program (internal code)
 ; 2. The first 36 characters of the LINTE_TITLE (internal code)
-; 3. The last three characters of the LINE_TITLE with partition number (i.c.)       
+; 3. The last three characters of the LINE_TITLE with partition number (i.c.)  
+; 4. Configuration flags
+;    - Indicate if the self-extractor is a part of a composite one
+;    - Inidcate if there is a 5-second gap before the recording     
 ; 
 ; The turbo block table is a table of 5-byte items, each item represents
 ; a buffer range for the turbo 2000 block write routine, followed by a
@@ -150,7 +153,7 @@ READY_SAVE         lda #<DATA_TABLE        ;Reset the table and counter
                    bmi SKIP_START         ;If $80 (composite)
                    jsr WAIT_FOR_START     ;Wait for START key
 SKIP_START         jsr BEEP
-
+;-----------------------------------------------------------------------
 ;From now on, disable interrupts and DMA, keep motor ON until the contents
 ;is fully recorded.
 ;-----------------------------------------------------------------------
@@ -161,7 +164,7 @@ SKIP_START         jsr BEEP
                    bit CFG_FLAGS          ;Check if long gap requested
                    bvc NORM_GAP           ;No, skip to normal delay
   
-                   ldy #128               ;Long gap
+                   ldy #240               ;Long gap
                    jsr DELAY_LOOP_E       ;Make long gap
 NORM_GAP           jsr SHORT_DELAY
 ;-----------------------------------------------------------------------      
