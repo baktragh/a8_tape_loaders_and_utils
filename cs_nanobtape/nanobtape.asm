@@ -2,14 +2,14 @@
 ;NANOBTAPE (B-TAPE, Czech republic)
 ;          (TURBO TAPE. Czechoslovakia)
 ;Minimalistic binary loader for B-TAPE and TURBO TAPE
+;Assemble with MADS
+
 ;Support is limited to tape modes SS and LS
 
-;If I/O error occurs, 3 tape beeps are emitted. Affected
-;block can be loaded again
-
+;If I/O error occurs, the screen goes white.
 ;Block sequential numbers are checked. If number is lower than
-;expected, one tape beep is emitted. If number is higher than
-;expected, two tape beeps are emitted.
+;expected, the screen goes green. If number is higher than
+;expected, the screen goes red.
 
 ;File name and random number are not checked
 ;At least 600 pilot tone pulses are required to detect speed
@@ -18,11 +18,9 @@
 ;labels L0692 - L06B4
 
 ;If UNDER_ROM symbol is defined to 1 or 2, turbo blocks are stored to
-;memory 'under ROM'
-;
-;XL/XE only
+;memory 'under ROM'. This works with XL/XE models only
 ;=============================================================================== 
-        
+        OPT H-,F-
 
 .IF UNDER_ROM=0
         LOADER = 2820
@@ -42,10 +40,14 @@
 
         NAMEPRINT=8191
         NAMEBUFFER=8192
-        
-          .INCLUDE "equates.asm"
 
-          *=LOADER
+        ZP_PRINTLO=128
+        ZP_PRINTHI=129
+        ZP_PRINTLN=130
+        
+          ICL "equates.asm"
+
+          ORG LOADER
 
           jsr STARTUP             ;Call subroutine that performs initial setup
 
@@ -183,27 +185,27 @@ SETBUFFER lda #<KBLOCK
           sta BUFRLO
           lda #>KBLOCK
           sta BUFRHI
-          lda #<[KBLOCK+1024]
+          lda #<(KBLOCK+1024)
           sta BFENLO
-          lda #>[KBLOCK+1024]
+          lda #>(KBLOCK+1024)
           sta BFENHI
           rts
 
 ;===============================================================================
 ;Buffer ranges setup for user data
 ;===============================================================================
-SETDATABUFFER lda #<[KBLOCK+16] ;Start of the buffer
+SETDATABUFFER lda #<(KBLOCK+16) ;Start of the buffer
               sta BUFRLO
-              lda #>[KBLOCK+16]
+              lda #>(KBLOCK+16)
               sta BUFRHI
 
               clc               ;End of buffer calculation
-              lda #<[KBLOCK]
-              adc [KBLOCK+1]
+              lda #<KBLOCK
+              adc KBLOCK+1
               tax 
-              lda [KBLOCK+2]
+              lda KBLOCK+2
               and #7
-              adc #>[KBLOCK]
+              adc #>KBLOCK
               sta BFENHI
               stx BFENLO
               rts
@@ -221,7 +223,7 @@ GETBYTE
          lda BUFRHI
          cmp BFENHI
          bne FROMBUF           ;Not past end, take byte from buffer
-         lda [KBLOCK+2]        ;Last block (EOF) ?
+         lda KBLOCK+2          ;Last block (EOF) ?
          and #128
          beq GBNB
 
@@ -376,17 +378,17 @@ L0654       jsr L0692
             dex
             bne L0654
             tya
-            lsr A
+            lsr 
             pha
             eor #255
             sta BUFRFL
             pla
-            lsr A
+            lsr 
             pha
             eor #255
             sta RECVDN
             pla
-            lsr A
+            lsr 
             eor #255
             sta XMTDON
             ldy #0
@@ -409,10 +411,10 @@ L0677       ldy BUFRFL
 L0692       jsr L0697
             bcc L06B4
 
-L0697       lda RANDOM
-            and #228
-            ora STATUS
-            lsr A
+L0697       lda STATUS
+            lsr
+            ora #176
+            nop 
             and LTEMP+1
             sta COLBK
 
@@ -436,7 +438,7 @@ L06B4       clc
 NMISTORE   .BYTE 0
 PORTBSTORE .BYTE 0
 
-ROMOFF     sei
+ROMOFF    sei
           lda NMIEN
           sta NMISTORE
           lda #0
@@ -457,11 +459,11 @@ ROMON     lda PORTBSTORE
 
 
 ; This code can be overwritten by loaded binary file
-VOLATILE    = [*-1] 
+VOLATILE    = *-1 
 ;===============================================================================
 ; Handle errors
 ;===============================================================================
-FAILED    ldx #3                  ;Assume I/O error - 3 beeps
+FAILED    ldx #15                 ;White color
 
           lda BUFRLO              ;Check buffer pointer. If any bytes decoded
                                   ;Then it is I/O error
@@ -471,41 +473,41 @@ FAILED    ldx #3                  ;Assume I/O error - 3 beeps
           cmp #>KBLOCK
           bne F1
           
-          lda NOCKSM              ;Incorrect block. One beep or two beeps
+          lda NOCKSM              ;Incorrect block. Green or Red.
           cmp BLEXPECT            
           beq F1                  
-          ldx #1                  
+          ldx #176                  
           bcc F1
-          ldx #2
-
+          ldx #36
 F1
 .IF SUBROMVARIANT=1
          jsr ROMON
 .ENDIF
          lda COLOR4               ;Save original COLOR4
          pha
-         txa                      ;Prepare color indication
-         rol 
-         rol
-         rol 
-         sta COLOR4
-         sta COLBK
-         txa                      ;Prepare number of tape beeps
-         jsr 65020                ;Tape beep
-         
+         lda COLOR2
+         pha
+         stx COLOR2
+         stx COLOR4
+
+         lda #255                 ;Wait for SPACE
+         sta CH
+F_KB     lda CH
+         cmp #33
+         bne F_KB
+
          pla                      ;Restore original color 4
-         sta COLOR4                
-         
+         sta COLOR2
+         pla
+         sta COLOR4
+                
 .IF SUBROMVARIANT=1
          jsr ROMOFF
 .ENDIF
          jmp LOADBLOCK            ;Next try to load block
-
-
-
 ;===============================================================================
-;Reading file name
-;=============================================================================--
+;Read the first block and display file name
+;===============================================================================
 
 ;Read file name
 READNAME    lda #1
@@ -517,11 +519,9 @@ READNAME    lda #1
 .ENDIF
            jsr LOADBLOCK        ;Call subroutine that reads block
 
-           
-
            ldx #12              ;Copy to RAM that is not under ROM
-NMCP       lda [KBLOCK+4],x
-           sta [NAMEBUFFER-1],x
+NMCP       lda KBLOCK+4,x
+           sta NAMEBUFFER-1,x
            dex
            bne NMCP
 
@@ -536,17 +536,17 @@ NMCP       lda [KBLOCK+4],x
           lda #155             ;Append EOL
           sta NAMEBUFFER+12
           
-          ldx #<NAMEPRINT
-          ldy #>NAMEPRINT
-          jsr $C642            ;Print file name
+          lda #<NAMEPRINT
+          sta ZP_PRINTLO
+          lda #>NAMEPRINT
+          sta ZP_PRINTHI
+          lda #14
+          sta ZP_PRINTLN
+          
+          jsr PRINT
 
-          lda #0               ;Wait for some time
-          sta 20
-RDNMWL    lda 20
-          cmp #75
-          bne RDNMWL
+          jsr SHORT_DELAY
           rts
-
 ;===============================================================================
 ;Loader initialization
 ;===============================================================================
@@ -560,28 +560,66 @@ STARTUP   lda #<LOADSTART      ;Become DOS
           inx                  ;Indicate disk boot succeded (1)
           stx BOOT
 
-          ldx #<TITLE          ;Show program title
-          ldy #>TITLE
-          jsr LC642
+          lda #<TITLE          ;Show program title
+          sta ZP_PRINTLO
+          lda #>TITLE
+          sta ZP_PRINTHI
+          lda #<TITLE_L
+          sta ZP_PRINTLN
+          jsr PRINT
 
-          lda #1               ;Tape beep + key press
-          sta CH
-          jsr 65020
-          lda #255
-          sta CH
+          jsr SHORT_DELAY
+          rts
+;==============================================================================
+; Print routine (using IOCB #0)
+;==============================================================================
+;CIO channel 0          
+          CIO0_OP   =$0342
+          CIO0_STAT =$0343
+          CIO0_BUFLO=$0344
+          CIO0_BUFHI=$0345
+          CIO0_LENLO=$0348
+          CIO0_LENHI=$0349
+          CIO0_AUX1 =$034A
+          CIO0_AUX2 =$034B
+
+PRINT     lda #9                  ;Requesting PRINT
+          sta CIO0_OP
+          lda ZP_PRINTLO
+          sta CIO0_BUFLO
+          lda ZP_PRINTHI
+          sta CIO0_BUFHI
+          lda ZP_PRINTLN
+          sta CIO0_LENLO
+          ldx #0                  ;Channel 0
+          stx CIO0_LENHI
+          jsr CIOV                ;Call CIO
+          rts
+;==============================================================================
+; Short delay routine
+;==============================================================================
+SHORT_DELAY
+          pha
+          lda #0               ;Wait for some time
+          sta 20
+RDNMWL    lda 20
+          cmp #75
+          bne RDNMWL
+          pla
           rts
 
 ;Program title
 .IF UNDER_ROM=0
-TITLE    .BYTE 125,"NanoBTAPE",155
+TITLE    .BYTE 125,'NanoBTAPE',155
+TITLE_L  = *-TITLE
 .ENDIF
 
 .IF UNDER_ROM=1
-TITLE    .BYTE 125,"NanoBTAPE[UR]",155
+TITLE    .BYTE 125,'NanoBTAPE[UR]',155
+TITLE_L  = *-TITLE
 .ENDIF
 
 .IF UNDER_ROM=2
-TITLE    .BYTE 125,"NanoBTAPE[U2]",155
+TITLE    .BYTE 125,'NanoBTAPE[U2]',155
+TITLE_L  = *-TITLE
 .ENDIF
-
-

@@ -22,20 +22,20 @@
 .ENDIF
             LOADERENTRY=LOADERSTART
             
-
+            OPT H+,F-
 ;
 ; Start of code
 ;
-            *= 8192
+            ORG 8192
 LOADER            
 .IF UNDER_ROM=0            
-            .INCBIN nanobtape.bin
+            INS "nanobtape.bin"
 .ENDIF
 .IF UNDER_ROM=1
-            .INCBIN nanobtape_ur.bin
+            INS "nanobtape_ur.bin"
 .ENDIF
 .IF UNDER_ROM=2
-            .INCBIN nanobtape_u2.bin
+            INS "nanobtape_u2.bin"
 .ENDIF
 
 LOADER_END
@@ -86,6 +86,6 @@ MVEXIT
 ;
 ; Run segment
 ;
-            *=736
-            .BYTE <MOVDAT,>MOVDAT
+            ORG 736
+            .WORD MOVDAT
           
