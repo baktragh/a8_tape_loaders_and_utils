@@ -2,14 +2,13 @@
 ;NANOTBL (Turbo 2000 - kilobyte blocks, 
 ;         Czechoslovakia)
 
-
-;Minimalistic binary loader for
-;Turbo 2000 - kilobyte blocks
-
-;If SUBROMVARIANT symbol is defined, turbo blocks are stored to
-;memory 'under ROM'
+;Minimalistic binary loader for Turbo 2000 - kilobyte blocks
+;Assemble with MADS
 ;===============================================================================
 
+;===============================================================================
+; Build configuration
+;===============================================================================
 .IF UNDER_ROM=0
   LOADER = 2818
   KBLOCK = 1792
@@ -26,13 +25,20 @@
   SUBROMVARIANT=1
 .ENDIF
 
-NAMEBUFFER=8192                   ;There will be the file name
+          OPT H-,F-
+          ICL "equates.asm"
+;===============================================================================
+; Private constants
+;===============================================================================
+          NAMEBUFFER=8192         ;There will be the file name
                                   ;placed
-
-          .INCLUDE "equates.asm"
-
-          *=LOADER
-
+          ZP_PRINTLO=128
+          ZP_PRINTHI=129
+          ZP_PRINTLN=130
+;===============================================================================
+; Mainline code
+;===============================================================================
+          ORG LOADER
           jsr STARTUP             ;Call subroutine that performs initial setup
 
 LOADSTART jsr READNAME            ;Call subroutine that loads header and displays
@@ -130,11 +136,9 @@ BLH1      jsr GETBYTE             ;Obtain next two header bytes
 
 BLHE      jmp BLDATA              ;Done with header, process data
 
-
 ;===============================================================================
 ;Turbo block loading
 ;===============================================================================
-
 LOADBLOCK jsr SETBUFFER           ;Call subroutine that sets up buffer
 
           lda #255                ;Load kilobyte block
@@ -181,7 +185,7 @@ SDBPB         stx LTEMP           ;Partial block
 
               clc                 ;Calculating BFENLO
               lda #<KBLOCK
-              adc [KBLOCK+1023]   
+              adc KBLOCK+1023   
               sta BFENLO
               bcc SDBPB1          ;Correction of BFENHI
               inx  
@@ -348,7 +352,7 @@ L06DB       ldx #4
 L06DD       dex
             bne L06DD
             lda STATUS
-            lsr A
+            lsr 
 BARCOLOR    ora #$10         ;Color of the color bar            
             and LTEMP+1
             sta COLBK
@@ -398,7 +402,7 @@ VOLATILE    = [*-1]
 ;===============================================================================
 ; Error handling
 ;===============================================================================
-FAILED    pla                     ;Error occured
+FAILED    pla                     ;Error occured, fix the stack
           pla
 
 .IF SUBROMVARIANT=1
@@ -406,33 +410,33 @@ FAILED    pla                     ;Error occured
 .ENDIF
           lda COLOR4              ;Backup color 4
           pha
-          lda #88                 ;Color indication
+          lda COLOR2
+          pha
+          lda #15                 ;Color indication
           sta COLOR4
-          sta COLBK
-          lda #255                ;Tape beep + wait for key
-          jsr AUTOBEEP
+          sta COLOR2
+
+          lda #255                ;Wait for SPACE
+          sta CH
+F_KB      lda CH
+          cmp #33
+          bne F_KB
           pla
-          sta COLOR4              ;Restore color 4
+          sta COLOR2              ;Restore color 4
+          pla 
+          sta COLOR4
           
           jmp LOADSTART           ;Try again
-
-;============================================================================
-;Tape beep and possible automatic keypress, depends on A
-;============================================================================
-AUTOBEEP  sta CH
-          lda #1
-          jsr 65020
-          rts
-;=============================================================================
+;===============================================================================
 ;Reading file name
-;=============================================================================
+;===============================================================================
 READNAME  lda #<NAMEBUFFER
           sta BUFRLO
           lda #>NAMEBUFFER
           sta BUFRHI
-          lda #<[NAMEBUFFER+17]
+          lda #<(NAMEBUFFER+17)
           sta BFENLO
-          lda #>[NAMEBUFFER+17]
+          lda #>(NAMEBUFFER+17)
           sta BFENHI
 
           lda #1
@@ -451,24 +455,25 @@ READNAME  lda #<NAMEBUFFER
           bcc READNAME            ;Reading header failed, try again
 
           lda #155                ;Print file name
-          sta [NAMEBUFFER+17]
+          sta NAMEBUFFER+17
           lda #125
           sta NAMEBUFFER
-          ldx #<[NAMEBUFFER]
-          ldy #>[NAMEBUFFER]
-          jsr LC642
+          lda #<[NAMEBUFFER]
+          sta ZP_PRINTLO
+          lda #>[NAMEBUFFER]
+          sta ZP_PRINTHI
+          lda #18
+          sta ZP_PRINTLN
+          jsr PRINT
 
-          lda #0                  ;Wait for some time
-          sta 20
-RDNMWL    lda 20
-          cmp #75
-          bne RDNMWL
+          jsr SHORT_DELAY        ;Wait for a while
+
           rts
 
-;================================================================
+;===============================================================================
 ;Loader initialization
-;================================================================
- STARTUP  lda #<LOADSTART         ;Become DOS
+;===============================================================================
+STARTUP   lda #<LOADSTART         ;Become DOS
           sta DOSINI
           lda #>LOADSTART
           sta DOSINI+1
@@ -477,22 +482,70 @@ RDNMWL    lda 20
           inx                     ;Indicate disk boot succeded
           stx BOOT
 
-          ldx #<TITLE             ;Show program title
-          ldy #>TITLE
-          jsr LC642
+          lda #<TITLE             ;Show program title
+          sta ZP_PRINTLO
+          lda #>TITLE
+          sta ZP_PRINTHI
+          lda #<TITLE_L
+          sta ZP_PRINTLN
+          jsr PRINT
 
-          lda #1
-          jsr AUTOBEEP
+          jsr SHORT_DELAY         ;Wait for a while
+
+          rts                
+
+;===============================================================================
+; Print routine (using IOCB #0)
+;===============================================================================
+;CIO channel 0          
+          CIO0_OP   =$0342
+          CIO0_STAT =$0343
+          CIO0_BUFLO=$0344
+          CIO0_BUFHI=$0345
+          CIO0_LENLO=$0348
+          CIO0_LENHI=$0349
+          CIO0_AUX1 =$034A
+          CIO0_AUX2 =$034B
+
+PRINT     lda #9                  ;Requesting PRINT
+          sta CIO0_OP
+          lda ZP_PRINTLO
+          sta CIO0_BUFLO
+          lda ZP_PRINTHI
+          sta CIO0_BUFHI
+          lda ZP_PRINTLN
+          sta CIO0_LENLO
+          ldx #0                  ;Channel 0
+          stx CIO0_LENHI
+          jsr CIOV                ;Call CIO
           rts
 
+;===============================================================================
+; Short delay routine
+;===============================================================================
+SHORT_DELAY
+          pha
+          lda #0               ;Wait for some time
+          sta 20
+RDNMWL    lda 20
+          cmp #75
+          bne RDNMWL
+          pla
+          rts
+;===============================================================================
+; Static data
+;===============================================================================
 ;Program title
 .IF UNDER_ROM=0
-TITLE     .BYTE 125,"NanoTBL",155
+TITLE     .BYTE 125,'NanoTBL',155
+          TITLE_L=*-TITLE 
 .ENDIF
 .IF UNDER_ROM=1
-TITLE     .BYTE 125,"NanoTBL[UR]",155
+TITLE     .BYTE 125,'NanoTBL[UR]',155
+          TITLE_L=*-TITLE 
 .ENDIF
 .IF UNDER_ROM=2
-TITLE     .BYTE 125,"NanoTBL[U2]",155
+TITLE     .BYTE 125,'NanoTBL[U2]',155
+          TITLE_L=*-TITLE 
 .ENDIF
 
