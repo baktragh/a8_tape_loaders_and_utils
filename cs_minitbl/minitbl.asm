@@ -1,15 +1,22 @@
 ;===============================================================================
-;ROTDEV   (Turbo 2000 - kilobyte blocks,Czechoslovakia) XL/XE only
+;ROTDEV   (Turbo 2000 - kilobyte blocks,Czechoslovakia)
 ;Turbo 2000 - kilobyte blocks read only CIO handler 
 ;T: device that supports only READ operation
+; Assemble with MADS
 ;===============================================================================
 
 KBLOCK = 1792                     ;Address of kilobyte block
 NAMEBUFFER=1792                   ;File name buffer
 
-          .INCLUDE "equates.asm"
+          OPT H-,H-          
+          ICL "equates.asm"
           
-          *=2816
+          
+          ORG 2816
+
+          ZP_PRINTLO=128
+          ZP_PRINTHI=129
+          ZP_PRINTLN=130
 ;===============================================================================
 ;Turbo block loading
 ;===============================================================================
@@ -34,9 +41,9 @@ SETBUFFER lda #<KBLOCK
           sta BUFRLO
           lda #>KBLOCK
           sta BUFRHI
-          lda #<[KBLOCK+1024]
+          lda #<(KBLOCK+1024)
           sta BFENLO
-          lda #>[KBLOCK+1024]
+          lda #>(KBLOCK+1024)
           sta BFENHI
           rts
 ;===============================================================================
@@ -62,7 +69,7 @@ SDBPB         stx LTEMP           ;Partial block
 
               clc                 ;Calculating BFENLO
               lda #<KBLOCK
-              adc [KBLOCK+1023]   
+              adc KBLOCK+1023   
               sta BFENLO
               bcc SDBPB1          ;Correction of BFENHI
               inx  
@@ -205,7 +212,7 @@ L06DB       ldx #4
 L06DD       dex
             bne L06DD
             lda STATUS
-            lsr A 
+            lsr  
             and LTEMP+1
             sta COLBK
 L06E8       iny
@@ -223,15 +230,29 @@ L06FC       dec BRKKEY
 L06FE       clc
 L06FF       rts
 
+;-------------------------------------------------------------------------------
+; BEEP
+;-------------------------------------------------------------------------------
+BEEP               ldx #240
+BEEP_LOOP          lda #8
+                   sta CONSOL
+                   sta WSYNC
+                   sta WSYNC
+                   lda #0
+                   sta CONSOL
+                   sta WSYNC
+                   sta WSYNC
+                   dex
+                   bne BEEP_LOOP
 
-;===============================================================================
-;Tape beep
-;===============================================================================
-BEEP      lda #1
-          sta 764
-          lda #1
-          jsr 65020
-          rts
+SHORT_DELAY        ldy #84
+DELAY_LOOP_E       ldx #255            
+DELAY_LOOP_I       stx WSYNC
+                   dex
+                   bne DELAY_LOOP_I
+                   dey 
+                   bne DELAY_LOOP_E
+                   rts
 ;===============================================================================
 ;Opening file
 ;===============================================================================
@@ -247,9 +268,9 @@ RDNM      lda #<NAMEBUFFER       ;Set buffer for reading name
           sta BUFRLO
           lda #>NAMEBUFFER
           sta BUFRHI
-          lda #<[NAMEBUFFER+17]
+          lda #<(NAMEBUFFER+17)
           sta BFENLO
-          lda #>[NAMEBUFFER+17]
+          lda #>(NAMEBUFFER+17)
           sta BFENHI
           
           lda #0                 ;Decode turbo block
@@ -257,32 +278,19 @@ RDNM      lda #<NAMEBUFFER       ;Set buffer for reading name
           jsr L0631
           bcc RDNM               ;Reading header failed, try again
 
-PRTHD      ldy #16               ;Display title
-PRTLOOP    lda [NAMEBUFFER+1-1],y
-           and #[255-128]        ;Mask inverse bit
-           cmp #32               ;Compare with 32
-           bcc LT32              ;If A<32, then add 64
-           cmp #96               ;Compare with 96
-           bcs PRTSTA            ;If A>=96, then leave alone              
-LE32LT96   sec                   ;Otherwise subtract 32
-           sbc #32
-           bne PRTSTA            ;And always skip
-           beq PRTSTA
-LT32       ora #64               ;Add 64
-           
-PRTSTA     iny
-           sta (SAVMSC),y
-           dey
-           dey
-           bne PRTLOOP
-           
-           jsr BEEP              ;Autobeep 
+          lda #<(NAMEBUFFER+1)
+          sta ZP_PRINTLO
+          lda #>(NAMEBUFFER+1)
+          sta ZP_PRINTHI
+          lda #16
+          sta ZP_PRINTLN
+          jsr PRINT      
+          jsr BEEP              ;Autobeep 
 
-
-FRCRDB    lda #<[KBLOCK+1024]   ;Open succesfull, force GETBYTE
+FRCRDB    lda #<(KBLOCK+1024)   ;Open succesfull, force GETBYTE
           sta BUFRLO            ;to read block at the beginning
           sta BFENLO
-          lda #>[KBLOCK+1024]
+          lda #>(KBLOCK+1024)
           sta BUFRHI
           sta BFENHI
 
@@ -309,9 +317,6 @@ HTBENT  .WORD OPEN-1              ;OPEN routine
         .WORD $FDCB               ;GETSTATUS routine
         .WORD $FCE4               ;SPECIAL routine
         jmp CLOSE                 ;Jump to the initialization
-
-
-
 
 ;===============================================================================
 ;BINARY LOAD from T: device
@@ -456,8 +461,8 @@ BLSEGHEAD   .BYTE 0,0,0,0        ;Segment header and position pointer
 BLFIRSTFLAG .BYTE 1              ;First segment indication
 BLNOBINFLAG .BYTE 1
 
-BLTEXT      .BYTE 125            ;Clear Screen
-BLTITLE     .BYTE "T:",155       ;Program title and also file name
+BLTITLE     .BYTE 'T:',155       ;Program title and also file name
+BLTITLE_L    EQU *-BLTITLE
 
 ;===============================================================================
 ;Subroutine that closes file
@@ -489,14 +494,14 @@ FOPEN     ldx #16                ;16 represents offset for channel 1
           sta BLNOBINFLAG        ;Not binary file flag - no 255 255 header reached yet
           rts 
 
-VOLATILE    = [*-1]                 
+VOLATILE    = *-1                 
 ;===============================================================================
 ;Error handling
 ;===============================================================================
 HANDLEERROR lda COLOR4         ;Backup color 4
             pha
             
-            lda #88            ;Red/Purple screen
+            lda #15            ;White screen
             sta COLBK
             sta COLOR4
 
@@ -504,8 +509,8 @@ HANDLEERROR lda COLOR4         ;Backup color 4
             sta CH            
             
 ERRORKEY    lda CH
-            cmp #255
-            beq ERRORKEY
+            cmp #33
+            bne ERRORKEY
             
             pla                ;Restore color 4
             sta COLOR4
@@ -527,14 +532,42 @@ STARTUP   ldx #0                  ;Reset cold start flag
           lda #>REINIT
           sta DOSINI+1
           
-          ldx #<BLTEXT            ;Show title          
-          ldy #>BLTEXT
-          jsr $C642
+          lda #<BLTITLE            ;Show title
+          sta ZP_PRINTLO          
+          lda #>BLTITLE
+          sta ZP_PRINTHI
+          lda #<(BLTITLE_L-1)
+          sta ZP_PRINTLN
+          jsr PRINT
           rts
 
 REINIT    jsr ROTDEVI
           jmp BLOAD_ST
-          
+
+;===============================================================================
+; Print - we must print without CIO, because we are in CIO already.
+;===============================================================================
+PRINT      ldy #0
+PRTLOOP    cpy ZP_PRINTLN        ;Continue loop?
+           beq PR_DONE           ;No, done printing
+
+           lda (ZP_PRINTLO),y    ;Get next character
+
+           and #(255-128)        ;Mask inverse bit
+           cmp #32               ;Compare with 32
+           bcc LT32              ;If A<32, then add 64
+           cmp #96               ;Compare with 96
+           bcs PRTSTA            ;If A>=96, then leave alone              
+LE32LT96   sec                   ;Otherwise subtract 32
+           sbc #32
+           bne PRTSTA            ;And always skip
+           beq PRTSTA
+LT32       ora #64               ;Add 64
+           
+PRTSTA     sta (SAVMSC),y        ;Write to the display memory
+           iny
+           jmp PRTLOOP
+PR_DONE    rts 
 ;===============================================================================
 ;CIO handler initialization.
 ;==============================================================================
@@ -548,7 +581,7 @@ NF      lda 794,Y                 ;Empty field found ?
         cpy  #33                  ;At end of table
         bcc NF                    ;No - continue
 
-PF      lda  #'T                  ;T: device
+PF      lda  #'T'                 ;T: device
         sta 794,Y
         lda  #<HTBENT             ;Links to handler routines
         sta 795,Y

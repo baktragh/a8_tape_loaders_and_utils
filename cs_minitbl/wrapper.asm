@@ -11,16 +11,18 @@
             BFENHI=53
             
             LOADERSTART=2816
-            ROTDEV_INIT=$0E1C
-            BLOAD_START=$0CC0
+            ROTDEV_INIT=$0E53
+            BLOAD_START=$0CCE
+
+            OPT H+,F-
              
 
 ;
 ; Start of code
 ;
-            *= 8192
+            ORG 8192
 LOADER            
-            .incbin minitbl.bin
+            INS "minitbl.bin"
 LOADER_END
 
 
@@ -61,7 +63,6 @@ MVLAST
             DEX
             BNE MVLAST
 MVEXIT
-
 ;
 ; Start loader
 ;
@@ -70,6 +71,5 @@ MVEXIT
 ;
 ; Run segment
 ;
-            *=736
-            .BYTE <MOVDAT,>MOVDAT
-          
+            ORG 736
+            .WORD MOVDAT
