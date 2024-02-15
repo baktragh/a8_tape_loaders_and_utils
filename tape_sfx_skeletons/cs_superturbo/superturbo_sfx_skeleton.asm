@@ -65,6 +65,7 @@ LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
 CFG_FLAGS  .BYTE  0
            CFG_F_COMPOSITE = $80
            CFG_F_LONGGAP   = $40
+CFG_LGAP_DURATION .BYTE (3*45)
 ;------------------------------------------------------------------------------
 ; Speed tables
 ; First two values - standard, elongated pilot tone
@@ -119,7 +120,7 @@ SKIP_START         jsr BEEP
                    bit CFG_FLAGS          ;Check if long gap requested
                    bvc NORM_GAP           ;No, skip to normal delay
   
-                   ldy #240               ;Long gap
+                   ldy CFG_LGAP_DURATION  ;Set for long gap
                    jsr DELAY_LOOP_E       ;Make long gap
 NORM_GAP           jsr SHORT_DELAY
 ;-----------------------------------------------------------------------      
