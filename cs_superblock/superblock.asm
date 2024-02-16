@@ -1,7 +1,6 @@
 ;===============================================================================
 ;SuperBlock (Super Turbo, Czechoslovakia)
 
-
 ;Binary load emulation loader
 ;Binary file being loaded is required to have
 ;a RUN segment
@@ -25,7 +24,7 @@
 
 ;===============================================================================
 
-.INCLUDE "includes.asm"
+            .INCLUDE "includes.asm"
             *= 2048
 
 
@@ -214,10 +213,10 @@ L0692       jsr L0697
             bcc L06B4
 
 
-L0697       lda RANDOM
-            and #228
-            ora STATUS
-            lsr A
+L0697       lda STATUS
+            lsr
+            ora #$80
+            nop 
             and LTEMP+1
             sta COLBK
 
@@ -256,11 +255,11 @@ VOLATILE    = [*-1]
 ;-------------------------------------------------------------------------------
 HANDLEERROR lda #1              ;Cold start after RESET
             sta COLDST     
-            lda #88             ;Red/Purple screen
+            lda #15             ;White screen
             sta COLBK
+            sta COLOR2
             sta COLOR4
 ERRLOOP     jmp ERRLOOP         ;Wait for RESET   
-
 
 ;-------------------------------------------------------------------------------
 ; Emulate successful disk boot

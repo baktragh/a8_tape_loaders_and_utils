@@ -240,10 +240,10 @@ GP_MEASURE  jsr GP_WEDGE        ;Call wait for edge
 ;-------------------------------------------------------------------------------
 ;Wait for edge + colour effect
 ;-------------------------------------------------------------------------------
-GP_WEDGE    lda RANDOM
-            and #228
-            ora STATUS
-            lsr A
+GP_WEDGE    lda STATUS
+            lsr
+            ora #$80
+            nop 
             and LTEMP+1
             sta COLBK
 
@@ -297,9 +297,10 @@ VOLATILE    = [*-1]
 ;-------------------------------------------------------------------------------
 HANDLEERROR lda #1            ;Cold start after RESET
             sta COLDST     
-            lda #88           ;Red/Purple screen
+            lda #15           ;White screen
             sta COLBK
             sta COLOR4
+            sta COLOR2
 ERRLOOP     jmp ERRLOOP       ;Wait for RESET     
 ;-------------------------------------------------------------------------------
 ;Initialize loader
