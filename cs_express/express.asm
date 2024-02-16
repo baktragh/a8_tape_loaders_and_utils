@@ -14,6 +14,7 @@
 ; (0)    ID Byte .... 0101  Turbo 2000 Express Loader signature
 ;                1... ....  This is the last segment
 ;                .1.. ....  This segment is an INIT segment
+;                ..1. ....  This segment is a separator segment  
 ; 
 ; (1..4) Buffer range  (BUFLO,BUFHI,BFENLO,BFENHI)
 ; (5..x) Data bytes    (given by the buffer range)
@@ -256,7 +257,7 @@ SEGDONE     nop               ;[2] Compensation nop
             bcc L06C2         ;{3} If bad checksum, terminate decoding
 
             lda ICAX4Z        ;{3} What was the first byte
-            and #[128+64]     ;{2} Check for special flags
+            and #[128+64+32]  ;{2} Check for special flags
             bne L06C1         ;{3} If set, the block ends
             
             lda #STATE_ID     ;{2} Reset state to ID
