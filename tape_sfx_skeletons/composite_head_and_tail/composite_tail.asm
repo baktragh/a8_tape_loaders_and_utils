@@ -13,10 +13,15 @@
 ; MAINLINE CODE
 ;=======================================================================
                    ORG START_ADDR
+                   jmp BEGIN
+;-----------------------------------------------------------------------
+; Configuration
+;------------------------------------------------------------------------
+CFG_ALARM          .BYTE 0
 ;-----------------------------------------------------------------------
 ;Initialization
 ;-----------------------------------------------------------------------
-                   lda #1               ;Reset = cold start
+BEGIN              lda #1               ;Reset = cold start
                    sta COLDST
 
                    jsr WAIT_FOR_VBLANK
@@ -37,6 +42,14 @@
                    lda #0
                    sta COLOR1
 
+                   lda CFG_ALARM       ;Is alarm set?
+                   beq ENDLESS         ;No, just wait for RESET
+
+ALARM_LOOP         jsr BELL
+                   jsr WAIT_FOR_VBLANK
+                   dec CFG_ALARM
+                   bne ALARM_LOOP
+
 ENDLESS            jmp ENDLESS
 ;-----------------------------------------------------------------------
 ; Wait for VBLANK
@@ -46,7 +59,31 @@ WAIT_FOR_VBLANK    php
 WFV_1              cmp VCOUNT
                    bne WFV_1
                    plp
-                   rts                                                   
+                   rts            
+;-----------------------------------------------------------------------
+; Audibles
+;-----------------------------------------------------------------------
+BELL 	           lda #0
+                   sta AUDCTL
+                   lda #$AF
+                   sta AUDC1
+                   lda #$30
+                   sta AUDF1
+
+                   ldx #40
+BELL_1             jsr WAIT_FOR_VBLANK
+                   dex
+                   bne BELL_1
+
+                   lda #$00
+                   sta AUDC1
+
+                   ldx #40
+BELL_2             jsr WAIT_FOR_VBLANK
+                   dex
+                   bne BELL_2
+
+                   rts
 ;=======================================================================
 ; DISPLAY DATA
 ;=======================================================================
