@@ -523,8 +523,4 @@ DLIST      .BYTE 112,112,112
 ; Segment data table
 ;=======================================================================
             DATA_TABLE=*
-;            .BYTE <DATA1,>DATA1,<DATA1_END,>DATA1_END,0
-;            .BYTE $FF,$FF,$FF,$FF,$FF
-;             
-;DATA1      .BYTE 1,2,3,4,5,6,7,8,9,10
-;DATA1_END  = *
+
