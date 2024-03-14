@@ -12,7 +12,7 @@
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
                 VBI_VCOUNT      = 124
-                START_ADDR      = 2912
+                START_ADDR      = 2800
                 ZP_BLOCKFLAG    = 130
                 ZP_ID_BYTE      = 131
                 ZP_ZAP_PTRLO    = 132
@@ -65,6 +65,7 @@ LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
 CFG_FLAGS  .BYTE  0
            CFG_F_COMPOSITE = $80
            CFG_F_LONGGAP   = $40
+           CFG_F_ALARM     = $20
 CFG_LGAP_DURATION .BYTE (3*45)
 ;------------------------------------------------------------------------------
 ; Speed tables
@@ -181,9 +182,16 @@ SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
                    sta PACTL
 
                    bit CFG_FLAGS                ;Check for composite($80)
-                   bmi SAVE_QUIT                ;If composite, quit       
-                   jmp READY_SAVE               ;Otherwise start over    
-SAVE_QUIT          rts        
+                   bmi SAVE_QUIT                ;If composite, quit
+                   lda CFG_FLAGS                ;Check for alarm
+                   and #CFG_F_ALARM                
+                   beq SAVE_AGAIN               ;No alarm, just skip
+
+SAVE_ALARM         jsr BEEP                     ;Three beeps for alarm
+                   jsr BEEP
+                   jsr BEEP
+SAVE_AGAIN         jmp READY_SAVE               ;Otherwise start over    
+SAVE_QUIT          rts          
 ;=======================================================================
 ; KEYBOARD SUBROUTINES
 ;=======================================================================                   
@@ -204,17 +212,18 @@ WFS_DONE           rts
 ;-----------------------------------------------------------------------
 ; Beep
 ;-----------------------------------------------------------------------                   
-BEEP               ldx #200
-BEEP_LOOP          lda #8
-                   sta CONSOL
-                   sta WSYNC
-                   sta WSYNC
-                   lda #0
-                   sta CONSOL
-                   sta WSYNC
-                   sta WSYNC
+BEEP 	           lda #0
+                   sta AUDCTL
+                   lda #$AF
+                   sta AUDC1
+                   lda #$10
+                   sta AUDF1
+                   ldx #20
+BELL_1             jsr WAIT_FOR_VBLANK
                    dex
-                   bne BEEP_LOOP
+                   bne BELL_1
+                   lda #$00
+                   sta AUDC1
                    rts
 ;-----------------------------------------------------------------------
 ; Wait for VBLANK
