@@ -224,25 +224,14 @@ DELAY_LOOP_I       stx WSYNC
 
 ;=======================================================================
 ; Write block of data, turbo blizzard
-; X,Y Buffer end range
+; BUFRLO,BUFRHI - BFENHO,BFENHI - Buffer Range
+; 
 ;=======================================================================
-WRITE_BLOCK       ldx #<DATA_TABLE+8
-                  ldy #>DATA_TABLE+8
+WRITE_BLOCK       
 j0DAB             JSR SET_34_32_36 ;$0D68
                   JSR NUL_SPACE    ;$0D19
 
-                  LDA SOUNDR ;$41
-                  BEQ sk466
-
-                  LDA #$A8
-                  STA AUDC4 ;$D207
-
-sk466             JSR j0D36
-
-                  LDX #0
-                  STA ($34,X)
-
-                  LDY #$02
+sk466             LDY #$14         ;@@ Was 2
                   LDX #$2E
                   JSR j0E15
 
@@ -348,23 +337,11 @@ sk45 BIT IRQEN ;$D20E
 ;-------------------------------------------------------------------------------
 ; Buffer setup for write routine
 ;-------------------------------------------------------------------------------
-SET_34_32_36 ;STX $34
-             ;STY $35
-
-             ;LDX <BUFOR
-             ;STX $32
-             ;STX $36
-
-             ;LDX >BUFOR
-             ;STX $33
-             ;STX $37
-
-             lda BUFRLO
+SET_34_32_36 lda BUFRLO
              sta LTEMP
              lda BUFRHI
              sta BUFRFL 
-           
-             RTS
+             rts 
 ;-------------------------------------------------------------------------------
 ; Pause
 ;-------------------------------------------------------------------------------
