@@ -2,10 +2,8 @@
 ; Turbo Blizzard Self-extractor skeleton   
 ; Assemble with the MADS assembler
 ;=======================================================================
-           
                  ICL "equates.asm" 
                  OPT H+,F-
-
 ;=======================================================================
 ; Private constants
 ;=======================================================================
@@ -15,7 +13,7 @@
                 START_ADDR      = 2840
                 ZP_BLOCKFLAG    = 130
                 ZP_ID_BYTE      = 131
-                CIOCHR = $2F
+                CIOCHR          = $2F
 ;
                 BF_NOSILENCE    = 0x80
                 BF_LONGPILOT    = 0x40
@@ -80,7 +78,7 @@ ENTRY_ADDR         jsr WAIT_FOR_VBLANK
                    sta SDMCTL
                    lda #0
                    sta COLOR2
-                   lda #$1A
+                   lda #$8A
                    sta COLOR0
                    sta COLOR1                                       
 ;-----------------------------------------------------------------------
@@ -149,7 +147,14 @@ SAVE_DOBLOCK       ldy #0                       ;Get ID byte
 ;Add some gaps between blocks
 SAVE_CONT          bit ZP_BLOCKFLAG             ;Check block flag
                    bmi SAVE_NODELAY             ;If 0x80, skip the delay
-                   jsr SHORT_DELAY              ;Otherwise add a gap
+                   lda #$02                     ;Check if 0x02
+                   and ZP_BLOCKFLAG              
+                   beq SAVE_SHORTDELAY          ;If not, continue with short
+
+SAVE_LONGDELAY     ldy #250                     ;Set longer delay
+                   jsr DELAY_LOOP_E             ;Do the long delay
+
+SAVE_SHORTDELAY    jsr SHORT_DELAY              ;Otherwise add a gap
 SAVE_NODELAY
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
@@ -228,35 +233,38 @@ DELAY_LOOP_I       stx WSYNC
 ; 
 ;=======================================================================
 WRITE_BLOCK       
-j0DAB             JSR SET_34_32_36 ;$0D68
-                  JSR NUL_SPACE    ;$0D19
+j0DAB             JSR DO_BUFFER_SETUP    ;Setup the buffer range
+                  JSR NUL_SPACE          
 
-sk466             LDY #$14         ;@@ Was 2
-                  LDX #$2E
-                  JSR j0E15
+sk466             LDY #$02               ;Presume short pilot
+                  LDX #$2E               ;Timing constant
+                  bit ZP_BLOCKFLAG       ;Check longer pilot flag (0x40)
+                  bvc WR_PILOT           ;If not set, skip
+                  ldy #$20               ;If set, longer pilot tone
+WR_PILOT          JSR DO_PILOT
 
                   DEC CIOCHR ;$2F
 
-sk52              LDX #8
+sk52              LDX #8                 ;Get byte from buffer
                   LDA ($2A,X)
-                  STA $30
+                  STA $30                ;Store it to temporary location
 
-sk50              JSR j0E4A
+sk50              JSR j0E4A              
                   ASL $30
                   BCC sk49
 
                   LDA #$D1
-                  STA AUDF3 ;$D204
+                  STA AUDF3 
                   BCS sk499
 
 sk49              LDA #$87
-                  STA AUDF3 ;$D204
+                  STA AUDF3 
 
 sk499             JSR j0DFD
                   DEX
                   BNE sk50
 
-                  JSR INC_32 ;$0D9B
+                  JSR DO_ADVANCE_BUF 
                   BCS sk52
 
                   INC CIOCHR ;$2F
@@ -265,11 +273,12 @@ sk499             JSR j0DFD
                   JSR VBI_IRQ ;$0D4F
 
                   LDY #1
-                  JMP ERR_Y
-sk44              JMP ERR   ;$0CBD
+                  JMP TERM_OK
+sk44              JMP TERM_ERROR  ;$0CBD
 
-* ;$0DFD
-
+;-------------------------------------------------------------------------------
+; Generate edge
+;-------------------------------------------------------------------------------
 j0DFD             LDA #4
 
 sk43              BIT IRQST ;$D20E
@@ -284,178 +293,134 @@ sk43              BIT IRQST ;$D20E
                   STA IRQEN ;$D20E
                   STY IRQEN ;$D20E
                   RTS
-* ;$0E15
 
-j0E15 LDA #1
-      STA AUDF4 ;$D206
+;-------------------------------------------------------------------------------
+; Genereate pilot tone
+;-------------------------------------------------------------------------------
+DO_PILOT          LDA #1
+                  STA AUDF4 ;$D206
 
-     LDA #$AE
-     STA AUDF3 ;$D204
+                  LDA #$AE
+                  STA AUDF3 ;$D204
 
-     STY CIOCHR ;$2F
+                  STY CIOCHR ;$2F
 
-     LDY #$84
-     STY STIMER ;$D209
-     STY IRQEN ;$D20E
+                  LDY #$84
+                  STY STIMER ;$D209
+                  STY IRQEN ;$D20E
 
-sk46 JSR j0DFD
-     JSR j0E4A
+sk46              JSR j0DFD
+                  JSR j0E4A
 
-     DEX
-     BNE sk46
+                  DEX
+                  BNE sk46
 
-     DEC CIOCHR ;$2F
-     BNE sk46
+                  DEC CIOCHR ;$2F
+                  BNE sk46
 
-     LDA #0
-     STA AUDF4 ;$D206
+                  LDA #0
+                  STA AUDF4 ;$D206
 
-     LDA #$87
-     STA AUDF3 ;$D204
+                  LDA #$87
+                  STA AUDF3 ;$D204
 
-     JSR j0DFD
-     JSR j0E4A
-     JSR j0DFD
-     RTS
+                  JSR j0DFD
+                  JSR j0E4A
+                  JSR j0DFD
+                  RTS
 
-* ;$0E4A
+;-------------------------------------------------------------------------------
+; Generate edges
+;-------------------------------------------------------------------------------
+j0E4A             LDA #4
 
-j0E4A LDA #4
+sk45              BIT IRQEN ;$D20E
+                  BPL sk44
+                  BNE sk45
 
-sk45 BIT IRQEN ;$D20E
-     BPL sk44
-     BNE sk45
+                  LDA #3
+                  STA SKCTL ;$D20F
 
-     LDA #3
-     STA SKCTL ;$D20F
-
-     LDA #$FB
-     STA IRQEN ;$D20E
-     STY IRQEN ;$D20E
-     RTS
+                  LDA #$FB
+                  STA IRQEN ;$D20E
+                  STY IRQEN ;$D20E
+                  RTS
 
 ;-------------------------------------------------------------------------------
 ; Buffer setup for write routine
 ;-------------------------------------------------------------------------------
-SET_34_32_36 lda BUFRLO
-             sta LTEMP
-             lda BUFRHI
-             sta BUFRFL 
-             rts 
+DO_BUFFER_SETUP   lda BUFRLO
+                  sta LTEMP
+                  lda BUFRHI
+                  sta BUFRFL 
+                  rts 
 ;-------------------------------------------------------------------------------
 ; Pause
 ;-------------------------------------------------------------------------------
-PAUSE LDX #0
-      LDA #3
-      JSR $E45C
+PAUSE             LDX #0
+                  LDA #3
+                  JSR $E45C
 
-     LDA #$FF
-     STA CDTMF3 ;$22A
+                  LDA #$FF
+                  STA CDTMF3 ;$22A
 
-sk42 LDA CDTMF3 ;$22A
-     BNE sk42
-     RTS
+sk42              LDA CDTMF3 ;$22A
+                  BNE sk42
+                  RTS
 
 ;-------------------------------------------------------------------------------
 ; Disable interrupts and display
 ;-------------------------------------------------------------------------------
-NUL_SPACE LDA #0
+NUL_SPACE         lda #0
 
-     STA NMIEN  ;$D40E
-     STA DMACLT ;$D400
-     STA IRQEN  ;$D20E
-     STA AUDC4  ;$D207
-     STA AUDC3  ;$D205
-     SEI
+                  sta AUDC4  ;$D207
+                  sta AUDC3  ;$D205
+                  sei
 
-     LDA #$83  ;%10000011
-     STA SKCTL ;$D20F
+                  lda #$83  ;%10000011
+                  sta SKCTL ;$D20F
 
-     LDA #$28  ;%00101000
-     STA AUDCTL ;$D208
-     RTS
+                  lda #$28  ;%00101000
+                  sta AUDCTL ;$D208
+                  rts
 ;-------------------------------------------------------------------------------
-;???
+; Advance the buffer pointer and check if whole buffer recorded
 ;-------------------------------------------------------------------------------
-j0D36 LDY $36
-      LDA #0
-      STA $36
+DO_ADVANCE_BUF    inc $32
+                  bne sk51
 
-sk48 CLC
-     ADC ($36),Y
-     INY
-     BNE sk47
+                  inc $33
 
-     INC $37
+sk51              sec
+                  lda $34
+                  sbc $32
 
-sk47 CPY $34
-     BNE sk48
-
-     LDX $37
-     CPX $35
-     BNE sk48
-     RTS
+                  lda $35
+                  sbc $33
+                  rts
 ;-------------------------------------------------------------------------------
-; ???
+;Restore VBI and IRQ to its original values 
 ;-------------------------------------------------------------------------------
-INC_32 INC $32
-       BNE sk51
+VBI_IRQ           LDA #0
+                  STA IRQEN ;$D20E
+                  STA AUDC4 ;$D207
 
-     INC $33
+;                  LDA #$40
+;                  STA NMIEN ;$D40E
 
-sk51 SEC
-     LDA $34
-     SBC $32
+                  LDA $10
+                  STA IRQEN ;$D20E
 
-     LDA $35
-     SBC $33
-     RTS
+                  CLI
 
+                  LDA #3
+                  STA SKCTL ;$D20F
+                  RTS
 ;-------------------------------------------------------------------------------
-;???
+; Error handling, termination
 ;-------------------------------------------------------------------------------
-VBI_IRQ LDA #0
-        STA IRQEN ;$D20E
-        STA AUDC4 ;$D207
-
-     LDA #$40
-     STA NMIEN ;$D40E
-
-     LDA $10
-     STA IRQEN ;$D20E
-
-     CLI
-
-     LDA #3
-     STA SKCTL ;$D20F
-     RTS
-
-;-------------------------------------------------------------------------------
-; Error handling
-;-------------------------------------------------------------------------------
-ERR_Y  EQU *
-sk70   TYA
-       RTS
-
-* ;$0CBD
-
-ERR  JSR VBI_IRQ ;$0D4F
-
-     LDX $0318
-     TXS
-
-     ;JSR OFF_MOTOR ;$109C   @@
-
-     LDY #0
-     STY $11
-     LDY #$80
-     STY NOPS
-     RTS
-
-;-------------------------------------------------------------------------------
-; Data area
-;-------------------------------------------------------------------------------
-NOPS .BYTE 0
+TERM_OK           RTS
+TERM_ERROR        JMP COLDSV  
 
 ;-------------------------------------------------------------------------------
 ; Terminate recording environment
