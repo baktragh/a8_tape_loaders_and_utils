@@ -258,8 +258,8 @@ BEEP 	           lda #0
 BELL_1             jsr WAIT_FOR_VBLANK
                    dex
                    bne BELL_1
-                   lda #$00
-                   sta AUDC1
+                   stx AUDC1                     ;Reset AUDC1 and AUDF1
+                   stx AUDF1
                    rts
 ;-----------------------------------------------------------------------
 ; Wait for VBLANK

@@ -83,6 +83,9 @@ BELL_2             jsr WAIT_FOR_VBLANK
                    dex
                    bne BELL_2
 
+                   stx AUDC1
+                   stx AUDF1
+
                    rts
 ;=======================================================================
 ; DISPLAY DATA
