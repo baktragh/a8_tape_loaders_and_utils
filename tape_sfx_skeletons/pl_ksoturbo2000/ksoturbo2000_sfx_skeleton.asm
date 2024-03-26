@@ -80,7 +80,7 @@ ENTRY_ADDR         jsr WAIT_FOR_VBLANK
                    sta SDMCTL
                    lda #0
                    sta COLOR2
-                   lda #$1A
+                   lda #$DA
                    sta COLOR0
                    sta COLOR1                                       
 ;-----------------------------------------------------------------------
