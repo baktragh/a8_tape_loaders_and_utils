@@ -99,8 +99,10 @@ SKIP_START         jsr BEEP
 ;is fully recorded.
 ;-----------------------------------------------------------------------
                    jsr RECENV_INIT
-;                  lda #52
-;                  sta PACTL
+.IF SIO=1
+                   lda #52                ;For SIO variant, motor ON
+                   sta PACTL
+.ENDIF
 
                    bit CFG_FLAGS          ;Check if long gap requested
                    bvc NORM_GAP           ;No, skip to normal delay
@@ -151,8 +153,10 @@ SAVE_NODELAY
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
 SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
-;                   lda #60                      ;Motor off
-;                   sta PACTL
+.IF SIO=1
+                   lda #60                      ;For SIO variant, motor OFF
+                   sta PACTL
+.ENDIF
 
                    bit CFG_FLAGS                ;Check for composite($80)
                    bmi SAVE_QUIT                ;If composite, quit
@@ -247,21 +251,31 @@ L070C       dex                    ; CA
             rts                    ; 60
 
 ;Write one pulse, type of the pulse is given by contents of Y
-L0710       ldx L0704,Y            ; BE 04 07
-            jsr L070C              ; 20 0C 07
-            lda #$00               ; A9 00
-            sta PORTA              ; 8D 00 D3
-            lda #$00               ; A9 00
-            sta COLBK              ; 8D 1A D0
-            lda CONSOL             ; AD 1F D0
+L0710       ldx L0704,Y            ; Get the timing constant
+            jsr L070C              ; Do delay
+.IF SIO=0
+            lda #$00               ; Set signal output to 0 - JS
+            sta PORTA              ; 
+.ELSE
+            lda #3                 ; Set signal output to 0 - SIO
+            sta SKCTL
+.ENDIF
+            lda #$00               ; Set border to black
+            sta COLBK              ; 
+            lda CONSOL             ; Check for console keys - disabled
             nop                    ; Was beq L0736     
-            ldx L0704+1,Y          ; BE 05 07
-            jsr L070C              ; 20 0C 07
-            lda #$DF               ; A9 DF
-            sta PORTA              ; 8D 00 D3
-            lda #$08               ; A9 08
-            sta COLBK              ; 8D 1A D0
-            rts                    ; 60
+            ldx L0704+1,Y          ; Get the timing constant
+            jsr L070C              ; Do delay
+.IF SIO=0
+            lda #$DF               ; Set signal output to 1 - JS
+            sta PORTA              ;
+.ELSE
+            lda #11                ; Set signal output to 1 - SIO
+            sta SKCTL
+.ENDIF 
+            lda #$02               ; Set border to dark gray
+            sta COLBK              ; 
+            rts                    ; 
 
 ;Terminate writing (trap) 
 L0736       jmp (COLDSV)
@@ -355,13 +369,15 @@ L07E1       lda CHKSUM             ; A5 31
 RECENV_TERM    lda #$40               
                sta NMIEN              
                lda #$22               
-               sta DMACLT             
+               sta DMACLT     
+.IF SIO=0        
                lda #$38               
                sta PACTL              
                lda #$00               
                sta PORTA              
                lda #$3C               
-               sta PACTL              
+               sta PACTL     
+.ENDIF         
                cli                    
                rts                    
 ;-------------------------------------------------------------------------------
@@ -373,12 +389,18 @@ RECENV_INIT    lda #$00               ; Disable NMIs
                sta DMACLT             ; Disable screen DMA
                lda #$08               ; Reset CONSOLE keys
                sta CONSOL             ; 
+
+.IF SIO=0
                lda #$38               ; PORT A - Direction control
                sta PACTL              ; 
                lda #$60               ; Setup direction controls
                sta PORTA              ; 
                lda #$3C               ; PORT A - Back to normal mode
-               sta PACTL              ; 
+               sta PACTL              ;
+.ELSEIF SIO=1
+               lda #192
+               sta AUDCTL
+.ENDIF 
                sei                    ; Disable IRQs.
                rts                    ;                    
 ;=======================================================================
