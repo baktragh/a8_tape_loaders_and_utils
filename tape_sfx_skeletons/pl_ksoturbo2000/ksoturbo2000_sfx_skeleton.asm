@@ -154,7 +154,7 @@ SAVE_CONT          bit ZP_BLOCKFLAG             ;Check block flag
                    and ZP_BLOCKFLAG              
                    beq SAVE_SHORTDELAY          ;If not, continue with short
 
-SAVE_LONGDELAY     ldy #200                     ;Set longer delay
+SAVE_LONGDELAY     ldy #120                     ;Set longer delay (2 s)
                    jsr DELAY_LOOP_E             ;Do the long delay
 
 SAVE_SHORTDELAY

@@ -17,6 +17,7 @@
 ;
                 BF_NOSILENCE    = 0x80
                 BF_LONGPILOT    = 0x40
+                BF_LONGGAP      = 0x02
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
