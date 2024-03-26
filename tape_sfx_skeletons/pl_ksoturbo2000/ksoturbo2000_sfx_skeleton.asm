@@ -14,10 +14,11 @@
                 VBI_VCOUNT      = 124
                 START_ADDR      = 2840
                 ZP_BLOCKFLAG    = 130
-                ZP_ID_BYTE      = 131
+                
 ;
                 BF_NOSILENCE    = 0x80
                 BF_LONGPILOT    = 0x40
+                BF_LONGGAP      = 0x02
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -148,6 +149,15 @@ SAVE_DOBLOCK       jsr ADJUST_BUFFER            ;Adjust buffer
 ;Add some gaps between blocks
 SAVE_CONT          bit ZP_BLOCKFLAG             ;Check block flag
                    bmi SAVE_NODELAY             ;If 0x80, skip the delay
+
+                   lda #$02                     ;Check if 0x02 (long delay)
+                   and ZP_BLOCKFLAG              
+                   beq SAVE_SHORTDELAY          ;If not, continue with short
+
+SAVE_LONGDELAY     ldy #200                     ;Set longer delay
+                   jsr DELAY_LOOP_E             ;Do the long delay
+
+SAVE_SHORTDELAY
                    jsr SHORT_DELAY              ;Otherwise add a gap
 SAVE_NODELAY
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
@@ -297,9 +307,15 @@ L0747       jsr L0710              ; 20 10 07
             jmp L073F              ; 4C 3F 07
 L0757       rts                    ; 60
 
-;Write pilot tone (4*256 pulses)
-L0790       lda #$00               ; A9 00
-            ldy #$04               ; A0 04
+;Write pilot tone (4*256 or 8*256 pulses)
+
+L0790       ldy #$04               ;Presume standard pilot tone
+            bit ZP_BLOCKFLAG       ; Check block flag for 0x40
+            bvc L0795              ; Not present, skip
+            ldy #$08               ; Make long pilot tone
+
+L0795       lda #$00               ; A9 00
+;           ldy #$04               ; A0 04
             sta STATUS             ; 85 30
 L0799       tya                    ; 98
             pha                    ; 48
