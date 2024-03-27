@@ -27,7 +27,10 @@ LENPTR      .BYTE <[LOADER_END-LOADER],>[LOADER_END-LOADER]
             
             
 ; Entry - force WARM START and then continue
-ENTRY       lda #0                        ;Warm start
+ENTRY       lda #$3C                      ;Motor off
+            sta PACTL
+
+            lda #0                        ;Warm start
             sta COLDST                    
             lda #02                       ;Cassette boot successfull
             sta BOOT
@@ -101,9 +104,6 @@ MVEXIT
            CIO0_AUX2 =$034B
 
 TITLE_SCREEN   
-           lda #$3C
-           sta PACTL
- 
            lda #9                  ;Requesting PRINT
            sta CRSINH
            sta CIO0_OP
