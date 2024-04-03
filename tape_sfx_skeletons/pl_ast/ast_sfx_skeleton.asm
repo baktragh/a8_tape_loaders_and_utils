@@ -1,7 +1,6 @@
 ;=======================================================================
-; Atari Super Turbo TSFX Skeleton   
+; Atari Super Turbo TSFX Skeleton (AST,ATT,UM)  
 ; Assemble with the MADS assembler
-;
 ;=======================================================================
            
                  ICL "equates.asm" 
@@ -16,7 +15,6 @@
                 START_ADDR      = 2840
                 ZP_BLOCKFLAG    = 130
 ;
-                BF_NOSILENCE    = 0x80
                 BF_LONGPILOT    = 0x40
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
@@ -142,9 +140,7 @@ SAVE_DOBLOCK       jsr WRITE_BLOCK
                    inc ZP_TAB_PTR_HI  
 
 ;Add some gaps between blocks
-SAVE_CONT          bit ZP_BLOCKFLAG             ;Check block flag
-                   bmi SAVE_NODELAY             ;If 0x80, skip the delay
-                   jsr SHORT_DELAY              ;Otherwise add a gap
+SAVE_CONT          jsr SHORT_DELAY              ;Otherwise add a gap
 SAVE_NODELAY
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
@@ -208,7 +204,7 @@ WFV_1              cmp VCOUNT
 ;-----------------------------------------------------------------------
 ; Short delay
 ;-----------------------------------------------------------------------                   
-SHORT_DELAY        ldy #44
+SHORT_DELAY        ldy #54
 DELAY_LOOP_E       ldx #255            
 DELAY_LOOP_I       stx WSYNC
                    dex
@@ -249,55 +245,57 @@ WB_BUF_ADJ0
                    JSR LCD52   ;Write sync pulse
                    JSR LCCFF   ;Write a block of data
                    JSR LCD72   ;Write termination signal
+                   JSR LCC96   ;Terminate writing
+
                    RTS
 
 ;Write a block of data
-LCCFF             LDY #$00
-             STY $CF
-             STY $D0
-             STY $D1
-LCD07             LDY #$00
-                 LDA ($CB),Y
-                 PHA
-                 EOR $D1
-                 STA $D1
-                 PLA
-LCD11            LDX #$50
-                 LSR
-                 BCS LCD18
-                 LDX #$28
-LCD18            PHA
-              TXA
-              PHA
-              LDA #$34
-              STA PBCTL
-              STA COLBK
-LCD23         DEX
-              BNE LCD23
-              LDA #$3C
-              STA PBCTL
-              STA COLBK
-              PLA
-              TAX
-LCD30          DEX
-                 BNE LCD30
-                 PLA
-                 INY
-                 CPY #$08
-                 BNE LCD11
-                 INC $CB
-                 BNE LCD3F
-                 INC $CC
-LCD3F            INC $CF
-                 BNE LCD45
-                 INC $D0
-LCD45            LDA $CF
-                 CMP $CD
-                 BNE LCD07
-                 LDA $D0
-                 CMP $CE
-                 BNE LCD07
-                 RTS
+LCCFF              LDY #$00
+                   STY $CF
+                   STY $D0
+                   STY $D1
+LCD07              LDY #$00
+                   LDA ($CB),Y
+                   PHA
+                   EOR $D1
+                   STA $D1
+                   PLA
+LCD11              LDX #$50
+                   LSR
+                   BCS LCD18
+                   LDX #$28
+LCD18              PHA
+                   TXA
+                   PHA
+                   LDA #$34
+                   STA PBCTL
+                   STA COLBK
+LCD23              DEX
+                   BNE LCD23
+                   LDA #$3C
+                   STA PBCTL
+                   STA COLBK
+                   PLA
+                   TAX
+LCD30              DEX
+                   BNE LCD30
+                   PLA
+                   INY
+                   CPY #$08
+                   BNE LCD11
+                   INC $CB
+                   BNE LCD3F
+                   INC $CC
+LCD3F              INC $CF
+                   BNE LCD45
+                   INC $D0
+LCD45              LDA $CF
+                   CMP $CD
+                   BNE LCD07
+                   LDA $D0
+                   CMP $CE
+                   BNE LCD07
+                   RTS
 
 ;Write sync pulse
 LCD52              LDX #$50
@@ -378,47 +376,48 @@ LCC96              CLI
 ;                  STA PACTL
 ;                  LDA #$40
 ;                  STA NMIEN
+                   LDA #0                ;Reset background to black
+                   STA COLBK
                    RTS
 ;-------------------------------------------------------------------------------
 ; Terminate recording environment
 ;-------------------------------------------------------------------------------               
-RECENV_TERM    lda #64
-               sta NMIEN
-               sta IRQEN
-               jsr WAIT_FOR_VBLANK   
-               lda #34                
-               sta DMACLT             
-               rts
-
+RECENV_TERM        lda #64
+                   sta NMIEN
+                   sta IRQEN
+                   jsr WAIT_FOR_VBLANK   
+                   lda #34                
+                   sta DMACLT             
+                   rts
 ;-------------------------------------------------------------------------------
 ; Initiate recording environment;
 ;-------------------------------------------------------------------------------               
-RECENV_INIT    ldy #0
-               sty STATUS
-               sty CHKSUM
-               sty NMIEN
-               sty DMACLT
-               jsr WAIT_FOR_VBLANK
-               sty IRQEN
-               clc
-               rts               
+RECENV_INIT        ldy #0
+                   sty STATUS
+                   sty CHKSUM
+                   sty NMIEN
+                   sty DMACLT
+                   jsr WAIT_FOR_VBLANK
+                   sty IRQEN
+                   clc
+                   rts               
 ;=======================================================================
 ; DISPLAY DATA
 ;=======================================================================
 ;-----------------------------------------------------------------------
 ; Display list
 ;-----------------------------------------------------------------------
-DLIST      .BYTE 112,112,112
-           .BYTE 7+64,<LINE_NAME,>LINE_NAME
-           .BYTE 112,112
-           .BYTE 2+64,<LINE_TITLE,>LINE_TITLE
-           .BYTE $30
-           .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2
-           .BYTE 65,<DLIST,>DLIST
+DLIST              .BYTE 112,112,112
+                   .BYTE 7+64,<LINE_NAME,>LINE_NAME
+                   .BYTE 112,112
+                   .BYTE 2+64,<LINE_TITLE,>LINE_TITLE
+                   .BYTE $30
+                   .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2
+                   .BYTE 65,<DLIST,>DLIST
 ;=======================================================================
 ; DATA AREAS
 ;=======================================================================
 ;=======================================================================
 ; Segment data table
 ;=======================================================================
-            DATA_TABLE=*  
+                   DATA_TABLE=*  
