@@ -1,0 +1,430 @@
+;*******************************************************************************
+;BACKUP T/D (C)  2024 BAKTRA Software
+;Mainline code. Assemble with MADS.
+;
+;This utility automatically copies Czechoslovak Turbo 2000 files to a raw disk
+;format. The raw disk format is then processed by the TURGEN utility, to
+;create binary load files or TSFXes.
+;
+;Minimum of 128 KB of total RAM is required, because the turbo block is loaded
+;into the banks of the extended memory. This allows to process files that
+;are about 48 KB long.
+;*******************************************************************************
+            ICL 'equates.asm'
+            OPT H+,F-
+            
+;-------------------------------------------------------------------------------
+; Local equates and definitions
+;-------------------------------------------------------------------------------            
+            PROGRAM_START EQU $1000
+            MAIN_BUFFER   EQU $4000
+            MAIN_BUFPAGE  EQU $40
+            ZP_BASEBANK   EQU 128
+            ZP_CURRBANK   EQU 129
+            ZP_LASTBANK   EQU 130
+;-------------------------------------------------------------------------------
+; Mainline code
+;-------------------------------------------------------------------------------
+            ORG PROGRAM_START
+
+;Initialize the copier
+L05D2       jsr CASINIT       ;Setup DOS vectors   
+
+;Prepare the base PORTB value
+            lda PORTB         ;Get current settings
+            and #($FF-$4-$8-$16) ;CPU eRAM + BANK 0
+            sta ZP_BASEBANK
+;-------------------------------------------------------------------------------
+; Decode header
+;-------------------------------------------------------------------------------
+L05D7       lda #<THEADER     ;Setup address where turbo header will be placed
+            sta BUFRLO
+            lda #>THEADER
+            sta BUFRHI
+            
+            lda #<TH_END
+            sta BFENLO
+            lda #>TH_END
+            sta BFENHI
+            
+            lda #0            ;First byte of the header should be 0
+            jsr L0631         ;Call Turbo 2000 block decoding subroutine
+            bcc L05D7         ;If error occured, try to decode the header again
+;-------------------------------------------------------------------------------
+; Process the header
+;-------------------------------------------------------------------------------
+LX          jsr DISPLAY_NAME
+;------------------------------------------------------------------------------- 
+;Calculate the buffer range
+;Start: BANK,BUFRHI,BUFRLO
+;End: BANK, BFENHI, BFENLO 
+;-------------------------------------------------------------------------------
+            lda ZP_BASEBANK   ;Buffer start - base bank, 16384
+            sta ZP_CURRBANK
+            sta ZP_LASTBANK
+            sta PORTB
+            lda #0
+            sta BUFRLO
+            lda #MAIN_BUFPAGE
+            sta BUFRHI
+
+BUF_B0      lda TH_LEN+1     ;Check length (number of pages)
+            cmp #16384/256   ;Is that <16384
+            bcc BUF_REM      ;Yes, done
+
+BUF_B1      lda TH_LEN+1     ;Check length (number of pages)
+            cmp #32768/256   ;Is that <32767
+            bcs BUF_B2       ;No, try other amount
+            beq BUF_B2
+
+            clc              ;Calculate the last bank
+            lda ZP_LASTBANK
+            adc #4
+            sta ZP_LASTBANK
+
+            lda TH_LEN+1    ;Calculate length remainder.
+            sec
+            sbc #16384/256
+            sta TH_LEN+1 
+            jmp BUF_REM
+
+BUF_B2      lda TH_LEN+1     ;Check length (number of pages)
+            cmp #49152/256   ;Is that <49152
+            bcs BUF_B3       ;No, try other amount
+            beq BUF_B3
+
+            clc
+            lda ZP_LASTBANK  ;Calculate the last bank
+            adc #8
+            sta ZP_LASTBANK
+
+            lda TH_LEN+1     ;Calculate length remainder.
+            sec
+            sbc #32768/256
+            sta TH_LEN+1 
+            jmp BUF_REM
+
+BUF_B3      clc               ;Calculate the last bank               
+            lda ZP_LASTBANK
+            adc #12
+            sta ZP_LASTBANK
+
+            lda TH_LEN+1     ;Calculate length remainder
+            sec
+            sbc #49152/256
+            sta TH_LEN+1 
+            jmp BUF_REM
+
+BUF_REM     lda TH_LEN       ;Count number of bytes
+            sta BFENLO
+
+            clc              ;Count page number relative to 16384
+            lda TH_LEN+1
+            adc BUFRHI
+            sta BFENHI
+;------------------------------------------------------------------------------- 
+;Decode file data
+;-------------------------------------------------------------------------------
+            lda #255          ;First byte should be 255
+            jsr L0631         ;Call Turbo 2000 block decoding subroutine
+            bcs L0622         ;No error - jump
+            
+ERRDATA     lda #18
+            sta COLBK
+            jmp ERRDATA
+            ;jmp L05D7         ;And then try to load another file
+                        
+
+;Decoding ok            
+L0622       lda #14
+            sta COLBK  
+            jmp L0622
+
+;And when done with all this, go and load next file            
+            jmp L05D7
+     
+;===============================================================================
+;Block decoding subroutine
+;Block is placed from: BUFRLO+256*BUFRHI
+;                to:   (BFENLO+256*BFENHI)-1
+;Register usage
+;Input:
+;  A - Identification byte - first byte of the block that is not part of the
+;      data
+;Output:
+;  CF - 1 - Block decoding OK
+;       0 - Block decoding failed           
+;
+;Fields used:
+; BUFRLO,BUFRHI,BFENLO,BFENHI - Buffer pointer
+; LTEMP   - Identification byte
+; CHKSUM  - Checksum
+; LTEMP+1 - Display mask (0 no display, 255 display)
+; ICAX5Z  - Counter of pilot tone pulses
+; ICAX6Z  - Byte being decoded
+; STATUS  - Prior DATA IN logical value       
+;===============================================================================
+   
+L0631       sta LTEMP         ;Keep the requested first byte value
+
+            lda #52           ;Switch program recorder to turbo mode                                                             
+            sta PACTL         ;Motor ON
+            sta PBCTL         ;Command ON
+            
+            lda #128          ;Disable interrupts
+            sta POKMSK
+            sta IRQEN
+            
+            clc               ;Clear work fields 
+            ldy #0
+            sty STATUS
+            sty CHKSUM
+            sty NMIEN
+            sty DMACLT
+            php
+
+;-------------------------------------------------------------------------------
+; Wait for 256 pilot tone pulses
+;-------------------------------------------------------------------------------           
+L0650       beq L0652         ;If not equal, terminate decoding
+            jmp L06C2
+L0652       jsr L06DB         ;Wait for edge
+            bcc L0650         ;If no edge, try again
+            
+            lda #0            ;Clear           
+            sta ICAX5Z        ; Number of pilot tone pulses 
+            sta LTEMP+1       ; Display mask (0 No stripes, 255 Stripes)
+            
+L065D       ldy #180          ;Set pulse width unit counter base value
+L065F       jsr L06D6         ;Measure width of the pulse
+            bcc L0650         ;If no pulse, start over
+            cpy #216          ;Is the pulse too long?
+            bcc L0652         ;Yes, start over
+            inc ICAX5Z        ;Increment pilot tone pulse counter
+            bne L065D         ;If not enoguh pilot tone pulses (255), get next
+            dec LTEMP+1       ;More than 255 pilot tone pulses - display stripes
+
+;-------------------------------------------------------------------------------
+; Wait for synchronization (very narrow) pulse
+;-------------------------------------------------------------------------------
+            
+L066E       ldy #209          ;Set pulse width unit counter base value
+            jsr L06DB         ;Wait for edge
+            bcc L0650         ;If no edge, start over
+            
+            cpy #222          ;Pulse too wide to be a sync pulse?
+            bcs L066E         ;Yes, keep waiting
+            jsr L06DB         ;Wait for edge
+            bcc L06C2         ;If no edge, terminate decoding
+            
+            ldy #198          ;Set pulse width unit counter base value
+            jmp L069D         ;Start decoding the data
+            
+;-------------------------------------------------------------------------------
+; Decode data
+;-------------------------------------------------------------------------------            
+L0683       plp               ;Is this identification byte?
+            bne L068E         ;No, just place the byte to the buffer
+            lda LTEMP         ;Yes, please update checksum
+            eor ICAX6Z        ;Check identification byte
+            bne L06C3         ;Bad - terminate decoding
+            beq L069A         ;Good - decode next byte
+            
+L068E       ldy #0            ;Place byte to the buffer
+            lda ICAX6Z
+            sta (BUFRLO),Y
+
+            inc BUFRLO        ;Update buffer pointer (low)
+            bne L069A         ;No wraparound, skip
+
+            inc BUFRHI        ;Update buffer pointer (high)
+
+            lda BUFRHI        ;Check buffer pointer (high)
+            cmp #32768/256    ;BUFRHI reached end of bank?
+            bne L069A         ;No, just skip
+
+            lda ZP_CURRBANK   ;Get current bank
+            clc               ;Increment by 4
+            adc #4
+            sta ZP_CURRBANK   ;Store it
+            sta PORTB         ;Update PORTB
+            lda #(16384/256)  ;Wrap BUFRHI
+            sta BUFRHI 
+           
+L069A       ldy #200          ;Set pulse width unit counter base value
+                              ;Time compensation
+            php
+            
+L069D       lda #1            ;Prepare bit mask
+            sta ICAX6Z         
+            
+L06A1       jsr L06D6         ;Measure width of the pulse
+            bcc L06C2         ;If no pulse, terminate decoding
+            cpy #227          ;Determine wide or narrow pulse
+            rol ICAX6Z        ;Rotate bit mask
+            ldy #198          ;Set pulse width unit counter base value
+            bcc L06A1         ;If byte not finished, get next bit
+            
+            lda CHKSUM        ;Update checksum
+            eor ICAX6Z
+            sta CHKSUM
+            
+            lda ZP_CURRBANK    ;Check if all bytes decoded
+            cmp ZP_LASTBANK
+            bne L0683
+
+            lda BUFRLO       
+            cmp BFENLO
+            lda BUFRHI
+            sbc BFENHI
+            bcc L0683         ;If not all decoded, place byte to memory   
+            lda #0            ;Use CF=0 to indicate bad checksum
+            cmp CHKSUM
+;-------------------------------------------------------------------------------
+; Terminate decoding
+;-------------------------------------------------------------------------------            
+L06C2       pla               ;Loading complete
+L06C3       lda #$40          ;Enable interrupts, just VBI
+            sta NMIEN
+            sta POKMSK
+            sta IRQEN
+            
+            lda #60           ;Switch program recorder mode to standard           
+            sta PACTL         ;Motor OFF
+            sta PBCTL         ;Command OFF
+            rts               ;Return
+
+;-------------------------------------------------------------------------------
+; Detect pulses and edges
+;-------------------------------------------------------------------------------            
+L06D6       jsr L06DB         ;Wait for edge
+            bcc L06FF         ;If no edge, terminate
+            
+L06DB       ldx #4            ;Delay
+L06DD       dex               
+            bne L06DD
+            
+            lda STATUS        ;Get prior status of DATA IN  
+            lsr               ;Shift it
+            and LTEMP+1       ;Display stripe (if mask on)
+            sta COLBK
+            
+L06E8       iny               ;Increment pulse width unit counter
+            beq L06FE         ;If wraparound, terminate
+            lda BRKKEY        ;Check BREAK key
+            beq L06FC         ;If pressed, terminate
+            lda SKSTAT        ;Get SKSTAT
+            and #16           ;Determine DATA IN logical value
+            cmp STATUS        ;Compare with prior one
+            beq L06E8         ;If the same, then no edge has been found
+            sta STATUS        ;Otherwise, there was an edge (0-1 or 1-0)
+            sec               ;Indicate edge found
+            rts               ;And return
+L06FC       dec BRKKEY
+L06FE       clc
+L06FF       rts
+
+;-------------------------------------------------------------------------------
+; Display name
+;-------------------------------------------------------------------------------
+           CIO0_OP    EQU $0342
+           CIO0_STAT  EQU $0343
+           CIO0_BUFLO EQU $0344
+           CIO0_BUFHI EQU $0345
+           CIO0_LENLO EQU $0348
+           CIO0_LENHI EQU $0349
+           CIO0_AUX1  EQU $034A
+           CIO0_AUX2  EQU $034B
+
+;-------------------------------------------------------------------------------
+; Display name
+;-------------------------------------------------------------------------------
+DISPLAY_NAME
+           pha
+           jsr MSG_CLR
+
+           ldx #10
+TS_L1      lda TH_NAME-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne TS_L1
+
+           lda #9                  ;Requesting PRINT
+           sta CIO0_OP
+           lda #<MSG_BUF
+           sta CIO0_BUFLO
+           lda #>MSG_BUF
+           sta CIO0_BUFHI
+           lda #33
+           sta CIO0_LENLO
+           ldx #0                  ;Channel 0
+           stx CIO0_LENHI
+           jsr CIOV                ;Call CIO
+
+           pla
+           rts
+;-------------------------------------------------------------------------------
+; Turbo header buffer
+;-------------------------------------------------------------------------------
+THEADER
+TH_TYPE     dta 0
+TH_NAME     dta c'..........'
+TH_LOAD     dta 0,0
+TH_LEN      dta 0,0
+TH_RUN      dta 0,0
+TH_END      EQU *
+TH_CHKSUM   dta 0
+TH_FULL_LEN EQU *-THEADER
+
+;-------------------------------------------------------------------------------
+; Message buffer
+;-------------------------------------------------------------------------------
+MSG_BUF     dta c'12345678901234567890123456789012',$9B
+
+;-------------------------------------------------------------------------------
+; Clear message
+;-------------------------------------------------------------------------------
+MSG_CLR    lda #32 
+           ldx #32
+MSG_C_L1   sta MSG_BUF-1,X
+           dex
+           bne MSG_C_L1
+           rts              
+;-------------------------------------------------------------------------------
+; Wait for VBLANK
+;-------------------------------------------------------------------------------
+WAITVBL     pha
+            lda RTCLOK+2
+@           cmp RTCLOK+2
+            beq @-
+            pla
+            rts
+;-------------------------------------------------------------------------------            
+;Wait for the START key
+;-------------------------------------------------------------------------------            
+WAIT_START  pha
+S_LOOP1     lda CONSOL
+            cmp #6
+            beq S_LOOP1
+S_LOOP2     lda CONSOL
+            cmp #6
+            bne S_LOOP2
+            pla
+            rts
+;===============================================================================
+;Initialization of DOS vectors
+;===============================================================================
+CASINIT     lda #0                        ;Warm start
+            sta COLDST                    
+            lda #02                       ;Cassette boot successfull
+            sta BOOT
+            lda #<PROGRAM_START             ;CASINI to loader entry
+            sta CASINI
+            lda #>PROGRAM_START
+            sta CASINI+1
+            rts
+;================================================================================
+; RUN Vector
+;================================================================================
+            ORG RUNAD
+            .word PROGRAM_START
