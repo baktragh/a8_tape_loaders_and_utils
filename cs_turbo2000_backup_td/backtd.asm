@@ -11,6 +11,8 @@
 ;are about 48 KB long.
 ;*******************************************************************************
             ICL 'equates.asm'
+            ICL 'auxmacs.mac'
+
             OPT H+,F-
             
 ;-------------------------------------------------------------------------------
@@ -22,6 +24,7 @@
             ZP_BASEBANK   EQU 128
             ZP_CURRBANK   EQU 129
             ZP_LASTBANK   EQU 130
+            VBI_VCOUNT    EQU 124 
 ;-------------------------------------------------------------------------------
 ; Mainline code
 ;-------------------------------------------------------------------------------
@@ -29,6 +32,9 @@
 
 ;Initialize the copier
 L05D2       jsr CASINIT       ;Setup DOS vectors   
+            jsr DISPLAY_TITLE ;Display the title
+            jsr DISPLAY_START_TO_LOAD ;Press START prompt
+            jsr WAIT_START    ;Wait for the START key
 
 ;Prepare the base PORTB value
             lda PORTB         ;Get current settings
@@ -53,7 +59,8 @@ L05D7       lda #<THEADER     ;Setup address where turbo header will be placed
 ;-------------------------------------------------------------------------------
 ; Process the header
 ;-------------------------------------------------------------------------------
-LX          jsr DISPLAY_NAME
+LX          jsr DISPLAY_FOUND
+            jsr SHORT_DELAY
 ;------------------------------------------------------------------------------- 
 ;Calculate the buffer range
 ;Start: BANK,BUFRHI,BUFRLO
@@ -129,16 +136,15 @@ BUF_REM     lda TH_LEN       ;Count number of bytes
             jsr L0631         ;Call Turbo 2000 block decoding subroutine
             bcs L0622         ;No error - jump
             
-ERRDATA     lda #18
-            sta COLBK
-            jmp ERRDATA
-            ;jmp L05D7         ;And then try to load another file
+ERRDATA     jsr DISPLAY_LOAD_ERROR
+            jsr SHORT_DELAY
+            jmp L05D7         ;And then try to load another file
                         
 
 ;Decoding ok            
-L0622       lda #14
-            sta COLBK  
-            jmp L0622
+L0622       jsr DISPLAY_LOADED_OK
+            jsr SHORT_DELAY
+            jsr SHORT_DELAY
 
 ;And when done with all this, go and load next file            
             jmp L05D7
@@ -339,30 +345,100 @@ L06FF       rts
 ;-------------------------------------------------------------------------------
 ; Display name
 ;-------------------------------------------------------------------------------
-DISPLAY_NAME
-           pha
+DISPLAY_FOUND
+           SUBENTRY
            jsr MSG_CLR
+           jsr MSG_DISPLAY
 
-           ldx #10
-TS_L1      lda TH_NAME-1,X
+           ldx #M_FOUND_L
+@          lda M_FOUND-1,X
            sta MSG_BUF-1,X
            dex
-           bne TS_L1
+           bne @-
 
-           lda #9                  ;Requesting PRINT
-           sta CIO0_OP
-           lda #<MSG_BUF
-           sta CIO0_BUFLO
-           lda #>MSG_BUF
-           sta CIO0_BUFHI
-           lda #33
-           sta CIO0_LENLO
-           ldx #0                  ;Channel 0
-           stx CIO0_LENHI
-           jsr CIOV                ;Call CIO
+           ldx #10
+@          lda TH_NAME-1,X
+           sta MSG_BUF-1+M_FOUND_L,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+           SUBEXIT
 
-           pla
-           rts
+M_FOUND    dta c'Found: '
+M_FOUND_L  equ *-M_FOUND
+
+
+;-------------------------------------------------------------------------------
+; Display program title
+;-------------------------------------------------------------------------------
+DISPLAY_TITLE SUBENTRY
+           jsr MSG_CLR
+
+           ldx #M_TITLE_L
+@          lda M_TITLE-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_TITLE    dta 125,c'TURGEN - BACKUP T/D 0.01'
+M_TITLE_L  equ *-M_TITLE
+
+;-------------------------------------------------------------------------------
+; Display PRESS START to begin loading
+;-------------------------------------------------------------------------------
+DISPLAY_START_TO_LOAD SUBENTRY
+           jsr MSG_CLR
+
+           ldx #M_START_TO_LOAD_L
+@          lda M_START_TO_LOAD-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_START_TO_LOAD    dta c'Press START to begin backup'
+M_START_TO_LOAD_L  equ *-M_START_TO_LOAD
+
+;-------------------------------------------------------------------------------
+; Display 'File loaded OK'
+;-------------------------------------------------------------------------------
+DISPLAY_LOADED_OK 
+           SUBENTRY
+           jsr MSG_CLR
+
+           ldx #M_LOADED_OK_L
+@          lda M_LOADED_OK-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_LOADED_OK    dta c'  File loaded OK'
+M_LOADED_OK_L  equ *-M_LOADED_OK
+
+;-------------------------------------------------------------------------------
+; Display 'Load error'
+;-------------------------------------------------------------------------------
+DISPLAY_LOAD_ERROR 
+           SUBENTRY
+           jsr MSG_CLR
+
+           ldx #M_LOAD_ERROR_L
+@          lda M_LOAD_ERROR-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_LOAD_ERROR    dta c'  Load Error'
+M_LOAD_ERROR_L  equ *-M_LOAD_ERROR
+
 ;-------------------------------------------------------------------------------
 ; Turbo header buffer
 ;-------------------------------------------------------------------------------
@@ -376,6 +452,9 @@ TH_END      EQU *
 TH_CHKSUM   dta 0
 TH_FULL_LEN EQU *-THEADER
 
+;===============================================================================
+; Messaging support
+;===============================================================================
 ;-------------------------------------------------------------------------------
 ; Message buffer
 ;-------------------------------------------------------------------------------
@@ -391,30 +470,62 @@ MSG_C_L1   sta MSG_BUF-1,X
            bne MSG_C_L1
            rts              
 ;-------------------------------------------------------------------------------
-; Wait for VBLANK
+; Display message buffer
 ;-------------------------------------------------------------------------------
-WAITVBL     pha
-            lda RTCLOK+2
-@           cmp RTCLOK+2
-            beq @-
-            pla
-            rts
+MSG_DISPLAY SUBENTRY
+           lda #9                  ;Requesting PRINT
+           sta CIO0_OP
+           lda #<MSG_BUF
+           sta CIO0_BUFLO
+           lda #>MSG_BUF
+           sta CIO0_BUFHI
+           lda #33
+           sta CIO0_LENLO
+           ldx #0                  ;Channel 0
+           stx CIO0_LENHI
+           jsr CIOV                ;Call CIO
+
+           SUBEXIT
+;===============================================================================
+; Miscellaneous
+;===============================================================================
+
+;-----------------------------------------------------------------------
+; Wait for VBLANK
+;-----------------------------------------------------------------------
+WAIT_FOR_VBLANK    SUBENTRY
+                   lda #VBI_VCOUNT
+WFV_1              cmp VCOUNT
+                   bne WFV_1
+                   SUBEXIT 
+;-----------------------------------------------------------------------
+; Short delay
+;-----------------------------------------------------------------------                   
+SHORT_DELAY        SUBENTRY
+                   ldy #220
+DELAY_LOOP_E       ldx #255            
+DELAY_LOOP_I       stx WSYNC
+                   dex
+                   bne DELAY_LOOP_I
+                   dey 
+                   bne DELAY_LOOP_E
+                   SUBEXIT
 ;-------------------------------------------------------------------------------            
 ;Wait for the START key
 ;-------------------------------------------------------------------------------            
-WAIT_START  pha
+WAIT_START  SUBENTRY
 S_LOOP1     lda CONSOL
             cmp #6
             beq S_LOOP1
 S_LOOP2     lda CONSOL
             cmp #6
             bne S_LOOP2
-            pla
-            rts
+            SUBEXIT
 ;===============================================================================
 ;Initialization of DOS vectors
 ;===============================================================================
-CASINIT     lda #0                        ;Warm start
+CASINIT     SUBENTRY
+            lda #0                        ;Warm start
             sta COLDST                    
             lda #02                       ;Cassette boot successfull
             sta BOOT
@@ -422,7 +533,7 @@ CASINIT     lda #0                        ;Warm start
             sta CASINI
             lda #>PROGRAM_START
             sta CASINI+1
-            rts
+            SUBEXIT
 ;================================================================================
 ; RUN Vector
 ;================================================================================
