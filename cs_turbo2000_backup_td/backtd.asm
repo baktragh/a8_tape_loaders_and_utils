@@ -78,7 +78,7 @@ VERIFY3_OK
 
 ;Prepare the base PORTB value
             lda PORTB         ;Get current settings
-            and #($FF-$4-$8-$16) ;CPU eRAM + BANK 0
+            and #($FF-$4-$8-$10) ;CPU eRAM + BANK 0
             sta ZP_BASEBANK
 ;-------------------------------------------------------------------------------
 ; Decode header
