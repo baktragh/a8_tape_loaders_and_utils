@@ -47,8 +47,8 @@ L05D2       jsr CASINIT       ;Setup DOS vectors
             jsr DISPLAY_START_TO_LOAD ;Press START prompt
             jsr WAIT_START    ;Wait for the START key
             
-;Verify, if the disk is OK
-            jsr DISK_VERIFY_EYE
+;Verify if the eye-catcher is present
+            jsr DISK_VERIFY_EYE 
             lda ZP_RETCODE
             beq VERIFY1_OK
 
@@ -57,6 +57,7 @@ VERIFY1_BAD lda #$12
             sta COLOR4
             jmp ENDLESS                
 
+;Verify if the disk is pristine or not
 VERIFY1_OK  jsr DISK_VERIFY_PRISTINE
             lda ZP_RETCODE
             beq VERIFY2_OK
@@ -65,7 +66,7 @@ VERIFY1_OK  jsr DISK_VERIFY_PRISTINE
             jsr DISPLAY_START_OR_RESET
             jsr WAIT_START
             
-
+;Verify if the disk is writable.
 VERIFY2_OK  jsr DISK_VERIFY_WRITABLE
             lda ZP_RETCODE
             beq VERIFY3_OK
@@ -83,7 +84,7 @@ VERIFY3_OK
 ;-------------------------------------------------------------------------------
 ; Decode header
 ;-------------------------------------------------------------------------------
-L05D7       lda #<THEADER     ;Setup address where turbo header will be placed
+DEC_HEADER  lda #<THEADER     ;Setup address where turbo header will be placed
             sta BUFRLO
             lda #>THEADER
             sta BUFRHI
@@ -95,11 +96,11 @@ L05D7       lda #<THEADER     ;Setup address where turbo header will be placed
             
             lda #0            ;First byte of the header should be 0
             jsr L0631         ;Call Turbo 2000 block decoding subroutine
-            bcc L05D7         ;If error occured, try to decode the header again
+            bcc DEC_HEADER         ;If error occured, try to decode the header again
 ;-------------------------------------------------------------------------------
 ; Process the header
 ;-------------------------------------------------------------------------------
-LX          jsr DISPLAY_FOUND
+PROC_HEADER jsr DISPLAY_FOUND
             jsr SHORT_DELAY
 ;------------------------------------------------------------------------------- 
 ;Calculate the buffer range
@@ -178,16 +179,19 @@ BUF_REM     lda TH_LEN       ;Count number of bytes
             
 ERRDATA     jsr DISPLAY_LOAD_ERROR
             jsr SHORT_DELAY
-            jmp L05D7         ;And then try to load another file
+            jmp DEC_HEADER         ;And then try to load another file
                         
 
 ;Decoding ok            
 L0622       jsr DISPLAY_LOADED_OK
             jsr SHORT_DELAY
             jsr SHORT_DELAY
+;-------------------------------------------------------------------------------
+; Process file data (TODO)
+;-------------------------------------------------------------------------------
 
 ;And when done with all this, go and load next file            
-            jmp L05D7
+            jmp DEC_HEADER
      
 ;===============================================================================
 ;Block decoding subroutine
@@ -417,7 +421,7 @@ DVE_BAD     lda #8                    ;Set RC=8
 DVE_T_EYE     dta c'TURGEN BACKUP T/D 1.00'
 DVE_T_EYE_L   equ *-DVE_T_EYE
 ;-------------------------------------------------------------------------------
-; Verify if the disk is pristine / writable
+; Verify if the disk is pristine 
 ;-------------------------------------------------------------------------------
 DISK_VERIFY_PRISTINE
             SUBENTRY
@@ -455,7 +459,6 @@ DVP_DONE
 DVP_BAD     lda #8                    ;Set RC=8
             sta ZP_RETCODE
             jmp DVP_DONE
-
 ;-------------------------------------------------------------------------------
 ; Verify if the disk is writable
 ;-------------------------------------------------------------------------------
@@ -659,7 +662,7 @@ M_VERIFY2_FAILED    dta c'Disk not pristine'
 M_VERIFY2_FAILED_L equ *-M_VERIFY2_FAILED
 
 ;-------------------------------------------------------------------------------
-; Display 'Disk not pristine'
+; Display 'Disk not writable'
 ;-------------------------------------------------------------------------------
 DISPLAY_VERIFY3_FAILED
            SUBENTRY
@@ -736,7 +739,7 @@ WFV_1              cmp VCOUNT
                    bne WFV_1
                    SUBEXIT 
 ;-------------------------------------------------------------------------------
-; Short delay
+; Short delay 
 ;-------------------------------------------------------------------------------                   
 SHORT_DELAY        SUBENTRY
                    ldy #220
