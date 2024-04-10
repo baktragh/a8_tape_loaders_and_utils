@@ -199,8 +199,8 @@ BUF_REM     lda TH_LEN       ;Count number of bytes
             
 ERRDATA     jsr DISPLAY_LOAD_ERROR
             jsr SHORT_DELAY
-            jmp DEC_HEADER         ;And then try to load another file
-                        
+
+            jmp DEC_HEADER    ;And then try to load another file
 
 ;Decoding ok            
 L0622       jsr DISPLAY_LOADED_OK
@@ -208,6 +208,7 @@ L0622       jsr DISPLAY_LOADED_OK
 ; Write the header data 
 ;-------------------------------------------------------------------------------
             jsr DISPLAY_WRITING_TO_DISK   ;Display message
+            jsr WRITE_CLRBUF
 
 ;Reset the MAXRC
             lda #0
@@ -290,6 +291,13 @@ WD_DONEINC
             jsr WRITE_FLUSH
             UPDATERC
             jsr WRITE_FORCE_ADVANCE
+
+;Write 'End of file system marker' temporarily to the sector.
+            jsr WRITE_CLRBUF
+            lda #'E'
+            sta SEC_BUFFER
+            jsr WRITE_FLUSH
+            UPDATERC  
 
 ;Display message
             lda ZP_W_MAXRC
@@ -636,8 +644,8 @@ WRITE_BYTE  sta  ZP_W_BYTE                ;First, store the parameter
             bne  WB_DONE                  ;When no wraparound, skip
 
             jsr  WRITE_FLUSH              ;Flush the sector
-
             UPDATERC
+            jsr  WRITE_CLRBUF             ;And clear the buffer.
            
             inc  ZP_D_SECLO               ;Increment lo sector number
             bne  WB_DONE                  ;When no wraparound, skip
@@ -687,8 +695,16 @@ WRITE_FORCE_ADVANCE
             bne WFA_DONE
             inc ZP_D_SECHI
 WFA_DONE    SUBEXIT 
-     
-
+;-------------------------------------------------------------------------------
+; Clear sector buffer
+;-------------------------------------------------------------------------------
+WRITE_CLRBUF SUBENTRY
+            lda #$FF
+            ldx #128
+@           sta SEC_BUFFER-1,X
+            dex
+            bne @-
+            SUBEXIT 
 ;===============================================================================
 ; Display messages
 ;===============================================================================
@@ -740,7 +756,7 @@ DISPLAY_TITLE SUBENTRY
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_TITLE    dta 125,c'TURGEN - BACKUP T/D 0.02'
+M_TITLE    dta 125,c'TURGEN - BACKUP T/D 0.03'
 M_TITLE_L  equ *-M_TITLE
 ;-------------------------------------------------------------------------------
 ; Display PRESS START to begin backup
