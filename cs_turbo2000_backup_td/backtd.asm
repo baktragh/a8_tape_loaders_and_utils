@@ -25,12 +25,27 @@
             ZP_CURRBANK   EQU 129
             ZP_LASTBANK   EQU 130
             ZP_RETCODE    EQU 131
-            VBI_VCOUNT    EQU 124 
+ 
             SEC_BUFFER    EQU $2000
+
+            ZP_D_BUFPTR   EQU 132
+            ZP_D_SECLO    EQU 133
+            ZP_D_SECHI    EQU 134
+
+            ZP_W_BFENLO   EQU 135
+            ZP_W_BFENHI   EQU 136
+            ZP_W_LASTBANK EQU 137
+            ZP_W_BYTE     EQU 138
+            ZP_W_BUFRLO   EQU 139
+            ZP_W_BUFRHI   EQU 140
+            ZP_W_MAXRC    EQU 141
 
             SNO_MARKING   EQU 25
             SNO_PRISTINE  EQU 26
             SNO_DATA      EQU 27
+
+            VBI_VCOUNT    EQU 124
+
             
 ;-------------------------------------------------------------------------------
 ; Mainline code
@@ -46,6 +61,9 @@ L05D2       jsr CASINIT       ;Setup DOS vectors
             jsr DISPLAY_TITLE ;Display the title
             jsr DISPLAY_START_TO_LOAD ;Press START prompt
             jsr WAIT_START    ;Wait for the START key
+
+;Initialize the sector writer
+            jsr WRITE_INIT  
             
 ;Verify if the eye-catcher is present
             jsr DISK_VERIFY_EYE 
@@ -165,11 +183,13 @@ BUF_B3      clc               ;Calculate the last bank
 
 BUF_REM     lda TH_LEN       ;Count number of bytes
             sta BFENLO
+            sta ZP_W_BFENLO  ;Backup the value for later writing
 
             clc              ;Count page number relative to 16384
             lda TH_LEN+1
             adc BUFRHI
             sta BFENHI
+            sta ZP_W_BFENHI  ;Backup the value for later writing
 ;------------------------------------------------------------------------------- 
 ;Decode file data
 ;-------------------------------------------------------------------------------
@@ -184,11 +204,102 @@ ERRDATA     jsr DISPLAY_LOAD_ERROR
 
 ;Decoding ok            
 L0622       jsr DISPLAY_LOADED_OK
-            jsr SHORT_DELAY
-            jsr SHORT_DELAY
 ;-------------------------------------------------------------------------------
-; Process file data (TODO)
+; Write the header data 
 ;-------------------------------------------------------------------------------
+            jsr DISPLAY_WRITING_TO_DISK   ;Display message
+
+;Reset the MAXRC
+            lda #0
+            sta ZP_W_MAXRC           
+
+;Write byte indicating 'H' as header
+            lda #'H'
+            jsr WRITE_BYTE
+;Write word indicating length of the header (17 bytes)
+            lda #<17
+            jsr WRITE_BYTE
+            lda #>17
+            jsr WRITE_BYTE
+
+;Write data of the header
+            ldx #0
+@           lda THEADER,X
+            jsr WRITE_BYTE
+            inx 
+            cpx #17
+            bne @-
+            jsr WRITE_FLUSH
+            UPDATERC
+;-------------------------------------------------------------------------------
+; Write the data block 
+;-------------------------------------------------------------------------------
+;Write byte indicating 'D' as data            
+            lda #'D'
+            jsr WRITE_BYTE
+
+;Write word indicating length of the file
+            lda TH_LEN
+            jsr WRITE_BYTE
+            lda TH_LEN+1
+            jsr WRITE_BYTE
+
+;Write data of the block
+            lda ZP_BASEBANK
+            sta ZP_CURRBANK
+            sta PORTB
+            lda #0
+            sta ZP_W_BUFRLO
+            lda #16384/256
+            sta ZP_W_BUFRHI
+
+WD_ONEBYTE
+            ldy #0                     ;Get one byte
+            lda (ZP_W_BUFRLO),Y         
+            jsr WRITE_BYTE
+
+;Increment all the pointers
+            inc ZP_W_BUFRLO        ;Update buffer pointer (low)
+            bne WD_DONEINC         ;No wraparound, skip
+
+            inc ZP_W_BUFRHI        ;Update buffer pointer (high)
+            lda ZP_W_BUFRHI        ;Check buffer pointer (high)
+            cmp #32768/256         ;BUFRHI reached end of bank?
+            bne WD_DONEINC         ;No, just skip
+
+            lda ZP_CURRBANK        ;Get current bank
+            clc                    ;Increment by 4
+            adc #4
+            sta ZP_CURRBANK        ;Store it
+            sta PORTB              ;Update PORTB
+            lda #(16384/256)       ;Wrap BUFRHI
+            sta ZP_W_BUFRHI 
+WD_DONEINC     
+;Check if all bytes have been processed
+            lda ZP_CURRBANK 
+            cmp ZP_LASTBANK
+            bne WD_ONEBYTE
+
+            lda ZP_W_BUFRLO       
+            cmp ZP_W_BFENLO
+            lda ZP_W_BUFRHI
+            sbc ZP_W_BFENHI
+            bcc WD_ONEBYTE
+
+;Ensure all data is flushed, and writer advances to the next sector
+            jsr WRITE_FLUSH
+            UPDATERC
+            jsr WRITE_FORCE_ADVANCE
+
+;Display message
+            lda ZP_W_MAXRC
+            beq WD_MSG_OK
+            jsr DISPLAY_WRITING_FAILED
+            jsr DISPLAY_START_OR_RESET
+            jsr WAIT_START
+ 
+WD_MSG_OK   jsr DISPLAY_WRITTEN_TO_DISK
+            jsr SHORT_DELAY
 
 ;And when done with all this, go and load next file            
             jmp DEC_HEADER
@@ -500,6 +611,85 @@ DVW_BAD     lda #8                    ;Set RC=8
 
 
 ;===============================================================================
+; Data writing subroutines
+;===============================================================================
+;-------------------------------------------------------------------------------
+;Initialize thr writing system
+;Position to sector 27, buffer offset is zero
+;-------------------------------------------------------------------------------
+WRITE_INIT  SUBENTRY
+            lda #SNO_DATA
+            sta ZP_D_SECLO
+            lda #0
+            sta ZP_D_SECHI
+            sta ZP_D_BUFPTR
+            SUBEXIT
+;-------------------------------------------------------------------------------
+;Write one byte, present in the A register
+;-------------------------------------------------------------------------------
+WRITE_BYTE  sta  ZP_W_BYTE                ;First, store the parameter
+            SUBENTRY
+            ldx  ZP_D_BUFPTR              ;Get buffer offset
+            lda  ZP_W_BYTE
+            sta  SEC_BUFFER,X             ;Store to the sector buffer
+            inx                           ;Increment buffer offset
+            bne  WB_DONE                  ;When no wraparound, skip
+
+            jsr  WRITE_FLUSH              ;Flush the sector
+
+            UPDATERC
+           
+            inc  ZP_D_SECLO               ;Increment lo sector number
+            bne  WB_DONE                  ;When no wraparound, skip
+            inc  ZP_D_SECHI               ;Increment hi sector counter
+
+WB_DONE     stx ZP_D_BUFPTR           
+            SUBEXIT
+;-------------------------------------------------------------------------------
+;Flush written data
+;-------------------------------------------------------------------------------
+WRITE_FLUSH SUBENTRY
+            lda #0
+            sta ZP_RETCODE
+            lda #1
+            sta DUNIT 
+            lda ZP_D_SECLO
+            sta DAUX1     
+            lda ZP_D_SECHI
+            sta DAUX2
+            lda #$57     ; Put sector, with verification
+            sta DCOMND
+            lda #>SEC_BUFFER
+            sta DBUFHI  
+            lda #<SEC_BUFFER 
+            sta DBUFLO
+            jsr DSKINV
+
+            lda DSTATS                ;Check the status
+            cmp #1                    ;Is status OK (==1)?
+            bne WF_BAD               ;No, return 8
+
+WF_DONE     SUBEXIT
+
+WF_BAD      lda #8                    ;Set RC=8
+            sta ZP_RETCODE
+            jmp WF_DONE       
+;-------------------------------------------------------------------------------
+;Force advancement to the next sector
+;-------------------------------------------------------------------------------
+WRITE_FORCE_ADVANCE
+            SUBENTRY
+            ldx ZP_D_BUFPTR           ;Is pointer zero?
+            beq WFA_DONE              ;No need to do anything
+            ldx #0                    ;Reset the pointer to zero
+            stx ZP_D_BUFPTR            
+            inc ZP_D_SECLO            ;Increment the sector counter
+            bne WFA_DONE
+            inc ZP_D_SECHI
+WFA_DONE    SUBEXIT 
+     
+
+;===============================================================================
 ; Display messages
 ;===============================================================================
            CIO0_OP    EQU $0342
@@ -679,6 +869,59 @@ DISPLAY_VERIFY3_FAILED
            SUBEXIT
 M_VERIFY3_FAILED   dta c'Disk not writable'
 M_VERIFY3_FAILED_L equ *-M_VERIFY3_FAILED
+
+;-------------------------------------------------------------------------------
+; Display 'Writing data to disk'
+;-------------------------------------------------------------------------------
+DISPLAY_WRITING_TO_DISK
+           SUBENTRY
+           jsr MSG_CLR
+
+           ldx #M_WRITING_TO_DISK_L
+@          lda M_WRITING_TO_DISK-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_WRITING_TO_DISK   dta c'  Writing data to disk...'
+M_WRITING_TO_DISK_L equ *-M_WRITING_TO_DISK
+;-------------------------------------------------------------------------------
+; Display 'Writing data to disk OK'
+;-------------------------------------------------------------------------------
+DISPLAY_WRITTEN_TO_DISK
+           SUBENTRY
+           jsr MSG_CLR
+
+           ldx #M_WRITTEN_TO_DISK_L
+@          lda M_WRITTEN_TO_DISK-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_WRITTEN_TO_DISK   dta c'  Data written to disk'
+M_WRITTEN_TO_DISK_L equ *-M_WRITTEN_TO_DISK
+
+;-------------------------------------------------------------------------------
+; Display 'Writing data failed'
+;-------------------------------------------------------------------------------
+DISPLAY_WRITING_FAILED
+           SUBENTRY
+           jsr MSG_CLR
+
+           ldx #M_WRITING_FAILED_L
+@          lda M_WRITING_FAILED-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_WRITING_FAILED   dta c'  Writing to disk failed'
+M_WRITING_FAILED_L   equ *-M_WRITING_FAILED
 
 ;-------------------------------------------------------------------------------
 ; Turbo header buffer

@@ -18,3 +18,9 @@ SUBEXIT  .MACRO
           rts
           .ENDM
 
+UPDATERC  .MACRO
+          lda ZP_W_MAXRC
+          ora ZP_RETCODE
+          sta ZP_W_MAXRC
+          .ENDM
+
