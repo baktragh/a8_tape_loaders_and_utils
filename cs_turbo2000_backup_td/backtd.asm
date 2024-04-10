@@ -54,10 +54,14 @@
             .byte $00
             .byte [[PROGRAM_END-PROGRAM_START]/128]+1
             .word PROGRAM_START
-            .word L05D2
+            .word PROGRAM_BEGIN
 
 ;Initialize the copier
-L05D2       jsr CASINIT       ;Setup DOS vectors   
+PROGRAM_BEGIN
+            jmp PROGRAM_CODE
+            dta '** TURGEN - BACKUP T/D (c) 2024 BAKTRA Software **'
+PROGRAM_CODE              
+            jsr CASINIT       ;Setup DOS vectors   
             jsr DISPLAY_TITLE ;Display the title
             jsr DISPLAY_START_TO_LOAD ;Press START prompt
             jsr WAIT_START    ;Wait for the START key
@@ -94,6 +98,11 @@ VERIFY2_OK  jsr DISK_VERIFY_WRITABLE
             jsr WAIT_START
 
 VERIFY3_OK
+;Write the 'End of filesystem marker'
+            jsr WRITE_CLRBUF
+            lda #'E'
+            sta SEC_BUFFER
+            jsr WRITE_FLUSH
 
 ;Prepare the base PORTB value
             lda PORTB         ;Get current settings
@@ -232,6 +241,8 @@ L0622       jsr DISPLAY_LOADED_OK
             bne @-
             jsr WRITE_FLUSH
             UPDATERC
+            jsr WRITE_FORCE_ADVANCE
+            jsr WRITE_CLRBUF
 ;-------------------------------------------------------------------------------
 ; Write the data block 
 ;-------------------------------------------------------------------------------
@@ -305,9 +316,10 @@ WD_DONEINC
             jsr DISPLAY_WRITING_FAILED
             jsr DISPLAY_START_OR_RESET
             jsr WAIT_START
+            jmp WD_DONE 
  
 WD_MSG_OK   jsr DISPLAY_WRITTEN_TO_DISK
-            jsr SHORT_DELAY
+WD_DONE     jsr SHORT_DELAY
 
 ;And when done with all this, go and load next file            
             jmp DEC_HEADER
@@ -756,7 +768,7 @@ DISPLAY_TITLE SUBENTRY
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_TITLE    dta 125,c'TURGEN - BACKUP T/D 0.03'
+M_TITLE    dta 125,c'TURGEN - BACKUP T/D 0.04'
 M_TITLE_L  equ *-M_TITLE
 ;-------------------------------------------------------------------------------
 ; Display PRESS START to begin backup
@@ -856,16 +868,29 @@ DISPLAY_VERIFY2_FAILED
            jsr MSG_CLR
            jsr MSG_DISPLAY
 
-           ldx #M_VERIFY2_FAILED_L
-@          lda M_VERIFY2_FAILED-1,X
+           ldx #M_VERIFY2_FAILED1_L
+@          lda M_VERIFY2_FAILED1-1,X
            sta MSG_BUF-1,X
            dex
            bne @-
            jsr MSG_DISPLAY
 
+           jsr MSG_CLR
+           ldx #M_VERIFY2_FAILED2_L
+@          lda M_VERIFY2_FAILED2-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+           jsr MSG_CLR
+           jsr MSG_DISPLAY
+
            SUBEXIT
-M_VERIFY2_FAILED    dta c'Disk not pristine'
-M_VERIFY2_FAILED_L equ *-M_VERIFY2_FAILED
+M_VERIFY2_FAILED1    dta c'Disk not pristine. '
+                     dta c'If you continue,'*
+M_VERIFY2_FAILED1_L equ *-M_VERIFY2_FAILED1
+M_VERIFY2_FAILED2    dta c'all existing data will be lost.'*
+M_VERIFY2_FAILED2_L equ *-M_VERIFY2_FAILED2
 
 ;-------------------------------------------------------------------------------
 ; Display 'Disk not writable'
