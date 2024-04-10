@@ -1,5 +1,5 @@
 ;*******************************************************************************
-;BACKUP T/D (C)  2024 BAKTRA Software
+;TURGEN - BACKUP T/D (C) 2024 BAKTRA Software
 ;Mainline code. Assemble with MADS.
 ;
 ;This utility automatically copies Czechoslovak Turbo 2000 files to a raw disk
@@ -9,12 +9,33 @@
 ;Minimum of 128 KB of total RAM is required, because the turbo block is loaded
 ;into the banks of the extended memory. This allows to process files that
 ;are up to 64 KB long.
+;
+;Disk layout:
+; The disk is always 8 MB, sector size 128 bytes.
+; Sector  Description
+; 1..24   Program code and data, not all are used.
+; 25      Eye-catcher sector
+; 26      Pristine indicator. Pristine disk has all $55s in the sector.
+;         Non-pristine disk has all $C0s in the sector. This sector is used
+;         to test if the disk is writable.
+; 27..    Sectors for data.
+
+; Header sector:
+; Begins with 'H',length, continues with header data. The header always
+; occupies only one sector.
+;
+; Data sectors:
+; The first sector begins with 'D',legnth, data follows. Then sectors
+; with pure data follow. The number of sectors can be calculated using the
+; length field.
+;
+; End of filesystem marker
+; The sector begins with 'E'
 ;*******************************************************************************
             ICL 'equates.asm'
             ICL 'auxmacs.mac'
 
             OPT H-,F-
-            
 ;-------------------------------------------------------------------------------
 ; Local equates and definitions
 ;-------------------------------------------------------------------------------            
@@ -45,7 +66,6 @@
             SNO_DATA      EQU 27
 
             VBI_VCOUNT    EQU 124
-
             
 ;-------------------------------------------------------------------------------
 ; Mainline code
@@ -61,7 +81,7 @@ PROGRAM_BEGIN
             jmp PROGRAM_CODE
             dta '** TURGEN - BACKUP T/D (c) 2024 BAKTRA Software **'
 PROGRAM_CODE              
-            jsr CASINIT       ;Setup DOS vectors   
+            jsr DOSINIT       ;Setup DOS vectors   
             jsr DISPLAY_TITLE ;Display the title
             jsr DISPLAY_START_TO_LOAD ;Press START prompt
             jsr WAIT_START    ;Wait for the START key
@@ -123,7 +143,7 @@ DEC_HEADER  lda #<THEADER     ;Setup address where turbo header will be placed
             
             lda #0            ;First byte of the header should be 0
             jsr L0631         ;Call Turbo 2000 block decoding subroutine
-            bcc DEC_HEADER         ;If error occured, try to decode the header again
+            bcc DEC_HEADER    ;If error occured, try to decode the header again
 ;-------------------------------------------------------------------------------
 ; Process the header
 ;-------------------------------------------------------------------------------
@@ -947,7 +967,7 @@ M_WRITTEN_TO_DISK   dta c'  Data written to disk'
 M_WRITTEN_TO_DISK_L equ *-M_WRITTEN_TO_DISK
 
 ;-------------------------------------------------------------------------------
-; Display 'Writing data failed'
+; Display 'Writing to disk fuiled'
 ;-------------------------------------------------------------------------------
 DISPLAY_WRITING_FAILED
            SUBENTRY
@@ -1052,17 +1072,20 @@ ENDLESS     jmp ENDLESS
 ;===============================================================================
 ;Initialization of DOS vectors
 ;===============================================================================
-CASINIT     SUBENTRY
+DOSINIT     SUBENTRY
             lda #0                        ;Warm start
             sta COLDST                    
-            lda #02                       ;Cassette boot successfull
+            lda #01                       ;Disk boot successfull
             sta BOOT
-            lda #<PROGRAM_START           ;CASINI to loader entry
-            sta CASINI
+            lda #<PROGRAM_START           ;DOSINI to loader entry
+            sta DOSINI
             lda #>PROGRAM_START
-            sta CASINI+1
+            sta DOSINI+1
             SUBEXIT
 
+;===============================================================================
+; Filler
+;===============================================================================
 PROGRAM_END EQU *
             .REPT 3072-[PROGRAM_END-PROGRAM_START]
             .byte 0
