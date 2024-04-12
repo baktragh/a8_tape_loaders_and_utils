@@ -61,11 +61,21 @@
             ZP_W_BUFRHI   EQU 140
             ZP_W_MAXRC    EQU 141
 
+            ZP_WK_LENLO   EQU 135
+            ZP_WK_LENHI   EQU 136
+            ZP_WK_LO      EQU 137
+            ZP_WK_HI      EQU 138  
+
+
             SNO_MARKING   EQU 25
             SNO_PRISTINE  EQU 26
             SNO_DATA      EQU 27
 
             VBI_VCOUNT    EQU 124
+
+            MENU_CODE_BACKUP  EQU 0
+            MENU_CODE_LISTING EQU 1
+            MENU_CODE_RECORD  EQU 2
             
 ;-------------------------------------------------------------------------------
 ; Mainline code
@@ -81,7 +91,21 @@ PROGRAM_BEGIN
             jmp PROGRAM_CODE
             dta '** TURGEN - BACKUP T/D (c) 2024 BAKTRA Software **'
 PROGRAM_CODE              
-            jsr DOSINIT       ;Setup DOS vectors   
+            jsr DOSINIT       ;Setup DOS vectors
+            jsr SHOWMENU
+
+            lda ZP_RETCODE    ;What was selected?
+            cmp #MENU_CODE_BACKUP
+            beq OP_BACKUP
+            cmp #MENU_CODE_LISTING
+            bne @+
+            jmp OP_LISTING
+@           jmp PROGRAM_BEGIN           
+
+;===============================================================================
+; Mainline Backup
+;===============================================================================
+OP_BACKUP   
             jsr DISPLAY_TITLE ;Display the title
             jsr DISPLAY_START_TO_LOAD ;Press START prompt
             jsr WAIT_START    ;Wait for the START key
@@ -122,7 +146,7 @@ VERIFY3_OK
             jsr WRITE_CLRBUF
             lda #'E'
             sta SEC_BUFFER
-            jsr WRITE_FLUSH
+            jsr WRITE_FORCE
 
 ;Prepare the base PORTB value
             lda PORTB         ;Get current settings
@@ -163,11 +187,16 @@ PROC_HEADER jsr DISPLAY_FOUND
             lda #MAIN_BUFPAGE
             sta BUFRHI
 
-BUF_B0      lda TH_LEN+1     ;Check length (number of pages)
+            lda TH_LEN
+            sta ZP_WK_LENLO
+            lda TH_LEN+1
+            sta ZP_WK_LENHI
+
+BUF_B0      lda ZP_WK_LENHI  ;Check length (number of pages)
             cmp #16384/256   ;Is that <16384
             bcc BUF_REM      ;Yes, done
 
-BUF_B1      lda TH_LEN+1     ;Check length (number of pages)
+BUF_B1      lda ZP_WK_LENHI  ;Check length (number of pages)
             cmp #32768/256   ;Is that <32767
             bcs BUF_B2       ;No, try other amount
             beq BUF_B2
@@ -177,13 +206,13 @@ BUF_B1      lda TH_LEN+1     ;Check length (number of pages)
             adc #4
             sta ZP_LASTBANK
 
-            lda TH_LEN+1    ;Calculate length remainder.
+            lda ZP_WK_LENHI    ;Calculate length remainder.
             sec
             sbc #16384/256
-            sta TH_LEN+1 
+            sta ZP_WK_LENHI 
             jmp BUF_REM
 
-BUF_B2      lda TH_LEN+1     ;Check length (number of pages)
+BUF_B2      lda ZP_WK_LENHI     ;Check length (number of pages)
             cmp #49152/256   ;Is that <49152
             bcs BUF_B3       ;No, try other amount
             beq BUF_B3
@@ -193,10 +222,10 @@ BUF_B2      lda TH_LEN+1     ;Check length (number of pages)
             adc #8
             sta ZP_LASTBANK
 
-            lda TH_LEN+1     ;Calculate length remainder.
+            lda ZP_WK_LENHI     ;Calculate length remainder.
             sec
             sbc #32768/256
-            sta TH_LEN+1 
+            sta ZP_WK_LENHI 
             jmp BUF_REM
 
 BUF_B3      clc               ;Calculate the last bank               
@@ -204,18 +233,18 @@ BUF_B3      clc               ;Calculate the last bank
             adc #12
             sta ZP_LASTBANK
 
-            lda TH_LEN+1     ;Calculate length remainder
+            lda ZP_WK_LENHI     ;Calculate length remainder
             sec
             sbc #49152/256
-            sta TH_LEN+1 
+            sta ZP_WK_LENHI 
             jmp BUF_REM
 
-BUF_REM     lda TH_LEN       ;Count number of bytes
+BUF_REM     lda ZP_WK_LENLO       ;Count number of bytes
             sta BFENLO
             sta ZP_W_BFENLO  ;Backup the value for later writing
 
             clc              ;Count page number relative to 16384
-            lda TH_LEN+1
+            lda ZP_WK_LENHI
             adc BUFRHI
             sta BFENHI
             sta ZP_W_BFENHI  ;Backup the value for later writing
@@ -261,7 +290,6 @@ L0622       jsr DISPLAY_LOADED_OK
             bne @-
             jsr WRITE_FLUSH
             UPDATERC
-            jsr WRITE_FORCE_ADVANCE
             jsr WRITE_CLRBUF
 ;-------------------------------------------------------------------------------
 ; Write the data block 
@@ -321,13 +349,12 @@ WD_DONEINC
 ;Ensure all data is flushed, and writer advances to the next sector
             jsr WRITE_FLUSH
             UPDATERC
-            jsr WRITE_FORCE_ADVANCE
 
 ;Write 'End of file system marker' temporarily to the sector.
             jsr WRITE_CLRBUF
             lda #'E'
             sta SEC_BUFFER
-            jsr WRITE_FLUSH
+            jsr WRITE_FORCE
             UPDATERC  
 
 ;Display message
@@ -673,25 +700,27 @@ WRITE_BYTE  sta  ZP_W_BYTE                ;First, store the parameter
             lda  ZP_W_BYTE
             sta  SEC_BUFFER,X             ;Store to the sector buffer
             inx                           ;Increment buffer offset
-            bne  WB_DONE                  ;When no wraparound, skip
-
+            stx ZP_D_BUFPTR               ;Update buffer pointer
+            cpx  #128                     ;Sector complete?
+            bne  WB_DONE                  ;No, then skip
+            
             jsr  WRITE_FLUSH              ;Flush the sector
             UPDATERC
             jsr  WRITE_CLRBUF             ;And clear the buffer.
-           
-            inc  ZP_D_SECLO               ;Increment lo sector number
-            bne  WB_DONE                  ;When no wraparound, skip
-            inc  ZP_D_SECHI               ;Increment hi sector counter
-
-WB_DONE     stx ZP_D_BUFPTR           
-            SUBEXIT
+ 
+WB_DONE     SUBEXIT
 ;-------------------------------------------------------------------------------
 ;Flush written data
 ;-------------------------------------------------------------------------------
 WRITE_FLUSH SUBENTRY
             lda #0
             sta ZP_RETCODE
-            lda #1
+
+            ldx ZP_D_BUFPTR
+            beq WF_DONE
+            bne WF_0
+
+WF_0        lda #1
             sta DUNIT 
             lda ZP_D_SECLO
             sta DAUX1     
@@ -709,24 +738,47 @@ WRITE_FLUSH SUBENTRY
             cmp #1                    ;Is status OK (==1)?
             bne WF_BAD               ;No, return 8
 
+            ldx #0                       ;Reset the buffer pointer
+            stx ZP_D_BUFPTR
+            inc ZP_D_SECLO               ;Increment lo sector number
+            bne WF_DONE                  ;When no wraparound, skip
+            inc ZP_D_SECHI               ;Increment hi sector counter
+
 WF_DONE     SUBEXIT
 
 WF_BAD      lda #8                    ;Set RC=8
             sta ZP_RETCODE
-            jmp WF_DONE       
+            jmp WF_DONE
 ;-------------------------------------------------------------------------------
-;Force advancement to the next sector
+;Write the buffer to the current sector, but do not advance to the next sector.
 ;-------------------------------------------------------------------------------
-WRITE_FORCE_ADVANCE
-            SUBENTRY
-            ldx ZP_D_BUFPTR           ;Is pointer zero?
-            beq WFA_DONE              ;No need to do anything
-            ldx #0                    ;Reset the pointer to zero
-            stx ZP_D_BUFPTR            
-            inc ZP_D_SECLO            ;Increment the sector counter
-            bne WFA_DONE
-            inc ZP_D_SECHI
-WFA_DONE    SUBEXIT 
+WRITE_FORCE SUBENTRY
+            lda #0
+            sta ZP_RETCODE
+
+            lda #1
+            sta DUNIT 
+            lda ZP_D_SECLO
+            sta DAUX1     
+            lda ZP_D_SECHI
+            sta DAUX2
+            lda #$57     ; Put sector, with verification
+            sta DCOMND
+            lda #>SEC_BUFFER
+            sta DBUFHI  
+            lda #<SEC_BUFFER 
+            sta DBUFLO
+            jsr DSKINV
+
+            lda DSTATS                ;Check the status
+            cmp #1                    ;Is status OK (==1)?
+            bne WFO_BAD              ;No, return 8
+
+WFO_DONE    SUBEXIT
+
+WFO_BAD     lda #8                    ;Set RC=8
+            sta ZP_RETCODE
+            jmp WFO_DONE          
 ;-------------------------------------------------------------------------------
 ; Clear sector buffer
 ;-------------------------------------------------------------------------------
@@ -788,7 +840,7 @@ DISPLAY_TITLE SUBENTRY
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_TITLE    dta 125,c'TURGEN - BACKUP T/D 0.04'
+M_TITLE    dta 125,c'BACKUP T/D - Backup Tape'
 M_TITLE_L  equ *-M_TITLE
 ;-------------------------------------------------------------------------------
 ; Display PRESS START to begin backup
@@ -1077,11 +1129,236 @@ DOSINIT     SUBENTRY
             sta COLDST                    
             lda #01                       ;Disk boot successfull
             sta BOOT
-            lda #<PROGRAM_START           ;DOSINI to loader entry
+            lda #<PROGRAM_BEGIN           ;DOSINI to loader entry
             sta DOSINI
-            lda #>PROGRAM_START
+            lda #>PROGRAM_BEGIN
             sta DOSINI+1
             SUBEXIT
+;===============================================================================
+; Main menu
+;===============================================================================
+SHOWMENU    SUBENTRY
+
+            jsr MSG_CLR
+            COPYMSG SM_M_TITLE1 SM_M_TITLE1_L
+            jsr MSG_DISPLAY
+            
+            jsr MSG_CLR
+            COPYMSG SM_M_TITLE2 SM_M_TITLE2_L
+            jsr MSG_DISPLAY
+
+            jsr MSG_CLR
+            jsr MSG_DISPLAY
+
+            jsr MSG_CLR
+            COPYMSG SM_M_ITEM0 SM_M_ITEM0_L
+            jsr MSG_DISPLAY
+
+            jsr MSG_CLR
+            COPYMSG SM_M_ITEM1 SM_M_ITEM1_L
+            jsr MSG_DISPLAY
+
+            jsr MSG_CLR
+            COPYMSG SM_M_ITEM2 SM_M_ITEM2_L
+            jsr MSG_DISPLAY
+
+SM_KEY      lda #255              ;Clear key
+            sta CH
+            jsr WAIT_FOR_VBLANK
+
+SM_KEY_L    lda CH
+SM_KEY0     cmp #$00                 ;Is that 'L'?
+            bne SM_KEY1              ;No, try another one
+            lda #MENU_CODE_LISTING   ;Set code to 'listing'
+            jmp SM_DONE              ;And be done
+
+SM_KEY1     cmp #$15                 ;Is that 'B'?
+            bne SM_KEY2
+            lda #MENU_CODE_BACKUP
+            jmp SM_DONE
+
+SM_KEY2     cmp #$28                 ;Is that 'R'
+            bne SM_KEY_L
+            lda #MENU_CODE_RECORD
+
+SM_DONE     sta ZP_RETCODE 
+            SUBEXIT
+
+SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.05'
+SM_M_TITLE1_L equ *-SM_M_TITLE1
+SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
+SM_M_TITLE2_L equ *-SM_M_TITLE2
+
+SM_M_ITEM0    dta c'(L) List files on disk'
+SM_M_ITEM0_L  equ *-SM_M_ITEM0   
+
+SM_M_ITEM1    dta c'(B) Backup tape'
+SM_M_ITEM1_L  equ *-SM_M_ITEM1
+
+SM_M_ITEM2    dta c'(R) Record tape'
+SM_M_ITEM2_L  equ *-SM_M_ITEM2
+ 
+;===============================================================================
+; Listing mainline
+;===============================================================================
+OP_LISTING 
+;Read the pristine indicator
+              lda #<SNO_PRISTINE
+              sta ZP_D_SECLO
+              lda #>SNO_PRISTINE
+              sta ZP_D_SECHI
+              jsr DISK_READSECT
+              lda ZP_RETCODE
+              beq @+
+              jmp OPL_FAILURE
+@
+              lda SEC_BUFFER
+              cmp #$55                     
+              bne @+ 
+              jmp OPL_COMPLETE
+@
+              lda #<SNO_DATA
+              sta ZP_D_SECLO
+              lda #>SNO_DATA
+              sta ZP_D_SECHI
+
+;Read the next sector
+OPL_LOOP      jsr DISK_READSECT
+              lda ZP_RETCODE
+              beq @+
+              jmp OPL_FAILURE
+@
+;Check if it is 'H' or 'E'
+              lda SEC_BUFFER
+              cmp #'E'
+              beq OPL_COMPLETE
+              cmp #'H'
+              beq @+
+              jmp OPL_FAILURE
+@
+;Process the 'H' block - display message
+              jsr MSG_CLR
+              ldx #10
+@             lda SEC_BUFFER+TH_NAME-THEADER-1+1+2,X
+              sta MSG_BUF-1,X
+              dex
+              bne @-
+              jsr MSG_DISPLAY
+
+;Advance to the following 'D' block
+              inc ZP_D_SECLO
+              bne @+
+              inc ZP_D_SECHI
+              beq OPL_FAILURE
+@             jsr DISK_READSECT
+              lda ZP_RETCODE
+              bne OPL_FAILURE
+
+;Check if really 'D' block
+              lda SEC_BUFFER
+              cmp #'D'
+              bne OPL_FAILURE
+
+;Calculate the total length of the data
+              lda SEC_BUFFER+1          ;Get the value from sector
+              sta ZP_WK_LENLO
+              lda SEC_BUFFER+2
+              sta ZP_WK_LENHI
+
+              clc                 ;Increment by 3 to get total bytes to skip 
+              lda ZP_WK_LENLO
+              adc #3
+              sta ZP_WK_LENLO
+              lda ZP_WK_LENHI
+              adc #0
+              sta ZP_WK_LENHI
+
+;Calculate the number of sectors to skip - high value
+              ldx #2
+@             lda ZP_WK_LENHI
+              clc
+              adc ZP_D_SECLO
+              sta ZP_D_SECLO
+              lda ZP_D_SECHI
+              adc #0
+              sta ZP_D_SECHI
+              dex
+              bne @-   
+
+;Continue calculation - 0,1,2 additional sectors
+              ldy #0
+              lda ZP_WK_LENLO
+              beq OPL_REMSEC_3
+              ldy #1
+              cmp #128
+              bcc OPL_REMSEC_3
+              ldy #2
+
+;Finalize the calculation
+OPL_REMSEC_3  tya
+              clc
+              adc ZP_D_SECLO
+              sta ZP_D_SECLO
+              lda ZP_D_SECHI
+              adc #0
+              sta ZP_D_SECHI
+
+;Ready to process the next file
+              jmp OPL_LOOP
+
+
+OPL_COMPLETE  jsr MSG_CLR
+              COPYMSG OPL_M_COMPLETE OPL_M_COMPLETE_L
+              jsr MSG_DISPLAY
+              jsr WAIT_START 
+              jmp PROGRAM_BEGIN
+
+OPL_FAILURE   jsr MSG_CLR
+              COPYMSG OPL_M_NOREAD OPL_M_NOREAD_L
+              jsr MSG_DISPLAY
+              jsr WAIT_START
+              jmp PROGRAM_BEGIN
+
+OPL_M_NOREAD dta c'Unable to read disk. Press START.'
+OPL_M_NOREAD_L equ *-OPL_M_NOREAD
+OPL_M_COMPLETE dta c'Listing complete. Press START.'
+OPL_M_COMPLETE_L equ *-OPL_M_COMPLETE
+
+;-------------------------------------------------------------------------------
+; Read sector, given by ZP_D_SECLO and ZP_D_SECHI
+;-------------------------------------------------------------------------------
+DISK_READSECT SUBENTRY
+           
+            lda #0
+            sta ZP_RETCODE
+
+            lda #1
+            sta DUNIT 
+            lda ZP_D_SECLO
+            sta DAUX1     
+            lda ZP_D_SECHI
+            sta DAUX2
+            lda #$52     ; "R"
+            sta DCOMND
+            lda #>SEC_BUFFER
+            sta DBUFHI  
+            lda #<SEC_BUFFER 
+            sta DBUFLO
+            jsr DSKINV
+
+            lda DSTATS                ;Check the status
+            cmp #1                    ;Is status OK (==1)?
+            bne DR_BAD               ;No, return 8
+
+DR_DONE
+            SUBEXIT
+
+DR_BAD      lda #8                    ;Set RC=8
+            sta ZP_RETCODE
+            jmp DR_DONE
+            SUBEXIT
+
+
 
 ;===============================================================================
 ; Filler

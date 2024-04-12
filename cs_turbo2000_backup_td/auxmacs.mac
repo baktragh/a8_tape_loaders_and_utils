@@ -24,3 +24,11 @@ UPDATERC  .MACRO
           sta ZP_W_MAXRC
           .ENDM
 
+COPYMSG   .MACRO text len
+           ldx #:len
+@          lda :text-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           .ENDM
+
