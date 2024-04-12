@@ -13,12 +13,12 @@
 ;Disk layout:
 ; The disk is always 8 MB, sector size 128 bytes.
 ; Sector  Description
-; 1..24   Program code and data, not all are used.
-; 25      Eye-catcher sector
-; 26      Pristine indicator. Pristine disk has all $55s in the sector.
+; 1..32   Program code and data, not all are used.
+; 33      Eye-catcher sector
+; 34      Pristine indicator. Pristine disk has all $55s in the sector.
 ;         Non-pristine disk has all $C0s in the sector. This sector is used
 ;         to test if the disk is writable.
-; 27..    Sectors for data.
+; 35..    Sectors for data.
 
 ; Header sector:
 ; Begins with 'H',length, continues with header data. The header always
@@ -61,15 +61,14 @@
             ZP_W_BUFRHI   EQU 140
             ZP_W_MAXRC    EQU 141
 
-            ZP_WK_LENLO   EQU 135
-            ZP_WK_LENHI   EQU 136
-            ZP_WK_LO      EQU 137
-            ZP_WK_HI      EQU 138  
+            ZP_WK_LENLO   EQU 142
+            ZP_WK_LENHI   EQU 143
+            ZP_WK_LO      EQU 144
+            ZP_WK_HI      EQU 145  
 
-
-            SNO_MARKING   EQU 25
-            SNO_PRISTINE  EQU 26
-            SNO_DATA      EQU 27
+            SNO_MARKING   EQU 33
+            SNO_PRISTINE  EQU 34
+            SNO_DATA      EQU 35
 
             VBI_VCOUNT    EQU 124
 
@@ -96,10 +95,14 @@ PROGRAM_CODE
 
             lda ZP_RETCODE    ;What was selected?
             cmp #MENU_CODE_BACKUP
-            beq OP_BACKUP
-            cmp #MENU_CODE_LISTING
+            bne @+
+            jmp OP_BACKUP
+@           cmp #MENU_CODE_LISTING
             bne @+
             jmp OP_LISTING
+@           cmp #MENU_CODE_RECORD
+            bne @+
+            jmp OP_RECORD
 @           jmp PROGRAM_BEGIN           
 
 ;===============================================================================
@@ -276,9 +279,9 @@ L0622       jsr DISPLAY_LOADED_OK
             lda #'H'
             jsr WRITE_BYTE
 ;Write word indicating length of the header (17 bytes)
-            lda #<17
+            lda #<THEADER_LEN
             jsr WRITE_BYTE
-            lda #>17
+            lda #>THEADER_LEN
             jsr WRITE_BYTE
 
 ;Write data of the header
@@ -286,7 +289,7 @@ L0622       jsr DISPLAY_LOADED_OK
 @           lda THEADER,X
             jsr WRITE_BYTE
             inx 
-            cpx #17
+            cpx #THEADER_LEN
             bne @-
             jsr WRITE_FLUSH
             UPDATERC
@@ -1046,8 +1049,7 @@ TH_LOAD     dta 0,0
 TH_LEN      dta 0,0
 TH_RUN      dta 0,0
 TH_END      EQU *
-TH_CHKSUM   dta 0
-TH_FULL_LEN EQU *-THEADER
+THEADER_LEN EQU *-THEADER
 ;===============================================================================
 ; Messaging support
 ;===============================================================================
@@ -1202,6 +1204,12 @@ SM_M_ITEM2_L  equ *-SM_M_ITEM2
 ; Listing mainline
 ;===============================================================================
 OP_LISTING 
+;Display an empty line
+              jsr MSG_CLR
+              jsr MSG_DISPLAY
+              lda #1
+              sta DSPFLG
+
 ;Read the pristine indicator
               lda #<SNO_PRISTINE
               sta ZP_D_SECLO
@@ -1306,24 +1314,65 @@ OPL_REMSEC_3  tya
 ;Ready to process the next file
               jmp OPL_LOOP
 
-
 OPL_COMPLETE  jsr MSG_CLR
               COPYMSG OPL_M_COMPLETE OPL_M_COMPLETE_L
               jsr MSG_DISPLAY
-              jsr WAIT_START 
+              jsr WAIT_START
+OPL_EXIT      lda #0
+              sta DSPFLG 
               jmp PROGRAM_BEGIN
 
 OPL_FAILURE   jsr MSG_CLR
               COPYMSG OPL_M_NOREAD OPL_M_NOREAD_L
               jsr MSG_DISPLAY
               jsr WAIT_START
-              jmp PROGRAM_BEGIN
+              jmp OPL_EXIT
 
 OPL_M_NOREAD dta c'Unable to read disk. Press START.'
 OPL_M_NOREAD_L equ *-OPL_M_NOREAD
 OPL_M_COMPLETE dta c'Listing complete. Press START.'
 OPL_M_COMPLETE_L equ *-OPL_M_COMPLETE
 
+;-------------------------------------------------------------------------------
+; Disk - readbyte, returns byte in A
+;-------------------------------------------------------------------------------
+DISK_READBYTE SUBENTRY
+             lda #0
+             sta ZP_RETCODE
+            
+             ldx ZP_D_BUFPTR            ;Get current buffer pointer
+             lda SEC_BUFFER,X           
+             sta ZP_W_BYTE              ;Get the next byte
+             inx                        ;Increment the buffer pointer
+             stx ZP_D_BUFPTR            ;Store updated buffer pointer  
+             cpx #128                   ;Is there a wraparound ?
+             bne DRB_DONE               ;No, skip
+
+             ldx #0                     ;Reset buffer pointer to zero
+             stx ZP_D_BUFPTR            ;Store buffer pointer
+             inc ZP_D_SECLO             ;Increment sector counter
+             bne @+
+             inc ZP_D_SECHI
+@            jsr DISK_READSECT          ;Read next sector
+
+DRB_DONE     pla                        ;Special exit linkage
+             tax
+             pla
+             tay
+             pla
+             lda ZP_W_BYTE
+             rts       
+
+DISK_READ_DRAIN SUBENTRY
+             ldx ZP_D_BUFPTR             ;If pointer at zero, done
+             beq DRD_DONE
+
+             inc ZP_D_SECLO              ;Increment the sector counter
+             bne @+
+             inc ZP_D_SECHI
+@            ldx #0                      ;Reset the buffer pointer
+             stx ZP_D_BUFPTR
+DRD_DONE     SUBEXIT
 ;-------------------------------------------------------------------------------
 ; Read sector, given by ZP_D_SECLO and ZP_D_SECHI
 ;-------------------------------------------------------------------------------
@@ -1358,12 +1407,148 @@ DR_BAD      lda #8                    ;Set RC=8
             jmp DR_DONE
             SUBEXIT
 
+;===============================================================================
+; Operation record tape
+;===============================================================================
+OP_RECORD 
+;Display message and wait for the START key
+            jsr MSG_CLR
+            COPYMSG OPR_M_START_TO_RECORD,OPR_M_START_TO_RECORD_L
+            jsr MSG_DISPLAY
+            jsr WAIT_START
 
+;Check if disk is pristine
+            lda #<SNO_PRISTINE
+            sta ZP_D_SECLO
+            lda #>SNO_PRISTINE
+            sta ZP_D_SECHI
+            jsr DISK_READSECT
+            lda ZP_RETCODE
+            beq OP_VERPRIST
+            jmp OP_BADREAD
+OP_VERPRIST
+            lda SEC_BUFFER        ;Check the pristine indicator
+            cmp #$55              ;It is present, nothing to record
+            bne OP_READ1SEC
+            jmp OP_COMPLETE
+
+;Begin reading at the beginning of the data sectors
+OP_READ1SEC
+            lda #<SNO_DATA        
+            sta ZP_D_SECLO
+            lda #>SNO_DATA
+            sta ZP_D_SECHI
+            lda #0
+            sta ZP_D_BUFPTR
+
+;Read the sector - prospective header or end marker
+OP_NEWFILE  jsr DISK_READSECT
+            lda ZP_RETCODE
+            beq OP_1SECOK
+            jmp OP_BADREAD  
+
+OP_1SECOK
+            lda SEC_BUFFER            ;Check where are we
+            cmp #'E'                  ;If end of filesystem, we are done.
+            beq OP_COMPLETE
+            cmp #'H'                  ;If header, it is good
+            beq OP_NEWHEADER
+            jmp OP_BADREAD            ;Found something unexpected, over
+
+;Process the header
+OP_NEWHEADER 
+            ldx #THEADER_LEN         ;Copy the header data to header buffer
+@           lda SEC_BUFFER+3-1,X
+            sta THEADER-1,X
+            dex
+            bne @-
+
+            jsr MSG_CLR             ;Display file name
+            COPYMSG THEADER+1 10
+            jsr MSG_DISPLAY
+
+;Read everything to the extended memory banks (byte by byte)
+OP_READRST  lda #0
+            sta ZP_D_BUFPTR
+            inc ZP_D_SECLO
+            bne @+
+            inc ZP_D_SECHI
+@           lda ZP_BASEBANK
+            sta ZP_CURRBANK
+            sta PORTB
+
+            jsr DISK_READSECT
+            lda ZP_RETCODE
+            beq OP_READRST_OK
+            jmp OP_BADREAD
+
+OP_READRST_OK
+            jsr DISK_READBYTE     ;Get next byte
+            ldy ZP_RETCODE        ;Check if OK
+            beq OP_DH_00          
+            jmp OP_BADREAD
+
+OP_DH_00    cmp #'D'              ;Check if Data block
+            beq OP_DH_10
+            jmp OP_BADREAD
+
+OP_DH_10    jsr DISK_READBYTE     ;Get the total length
+            sta ZP_WK_LENLO
+            jsr DISK_READBYTE
+            sta ZP_WK_LENHI
+
+            lda #0                ;We have a length and counter
+            sta ZP_WK_LO
+            sta ZP_WK_HI
+
+OP_FILELOOP 
+            jsr DISK_READBYTE     ;Get next byte
+
+            inc ZP_WK_LO          ;Just increment counter
+            bne @+
+            inc ZP_WK_HI
+
+@           lda ZP_WK_HI
+            cmp ZP_WK_LENHI
+            bne OP_FILELOOP_CONT
+            lda ZP_WK_LO
+            cmp ZP_WK_LENLO
+            beq OP_FILELOOP_END
+OP_FILELOOP_CONT
+            jmp OP_FILELOOP
+
+OP_FILELOOP_END
+            jsr DISK_READ_DRAIN
+
+;Record the file
+            jmp OP_NEWFILE
+
+;Recording completion
+OP_COMPLETE jsr MSG_CLR
+            COPYMSG OPR_M_REC_COMPLETE,OPR_M_REC_COMPLETE_L
+            jsr MSG_DISPLAY
+            jsr WAIT_START
+OP_EXIT     jmp PROGRAM_BEGIN
+
+;Handle bad sector read
+OP_BADREAD
+            jsr MSG_CLR
+            COPYMSG OPL_M_NOREAD,OPL_M_NOREAD_L
+            jsr MSG_DISPLAY
+            jsr WAIT_START
+            jmp OP_EXIT
+
+
+OPR_M_START_TO_RECORD dta 125,'Press START to begin recording'
+OPR_M_START_TO_RECORD_L equ *-OPR_M_START_TO_RECORD
+
+OPR_M_REC_COMPLETE dta 'Recording complete. Press START'
+OPR_M_REC_COMPLETE_L equ *-OPR_M_REC_COMPLETE
 
 ;===============================================================================
 ; Filler
 ;===============================================================================
 PROGRAM_END EQU *
-            .REPT 3072-[PROGRAM_END-PROGRAM_START]
+            .REPT 4096-[PROGRAM_END-PROGRAM_START]
             .byte 0
             .ENDR
