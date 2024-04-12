@@ -1450,8 +1450,9 @@ OP_NEWFILE  jsr DISK_READSECT
 OP_1SECOK
             lda SEC_BUFFER            ;Check where are we
             cmp #'E'                  ;If end of filesystem, we are done.
-            beq OP_COMPLETE
-            cmp #'H'                  ;If header, it is good
+            bne @+
+            jmp OP_COMPLETE
+@           cmp #'H'                  ;If header, it is good
             beq OP_NEWHEADER
             jmp OP_BADREAD            ;Found something unexpected, over
 
@@ -1467,17 +1468,22 @@ OP_NEWHEADER
             COPYMSG THEADER+1 10
             jsr MSG_DISPLAY
 
-;Read everything to the extended memory banks (byte by byte)
-OP_READRST  lda #0
+;Reset all disk and memory pointers 
+OP_READRST  lda #0                  ;Reset sector buffer pointer
             sta ZP_D_BUFPTR
-            inc ZP_D_SECLO
+            inc ZP_D_SECLO          ;Advance to the next sector
             bne @+
             inc ZP_D_SECHI
-@           lda ZP_BASEBANK
+
+@           lda ZP_BASEBANK         ;Reset pointers to the extended RAM
             sta ZP_CURRBANK
             sta PORTB
+            lda #0
+            sta ZP_W_BUFRLO
+            lda #16384/256
+            sta ZP_W_BUFRHI
 
-            jsr DISK_READSECT
+            jsr DISK_READSECT      ;Read first data sector
             lda ZP_RETCODE
             beq OP_READRST_OK
             jmp OP_BADREAD
@@ -1500,9 +1506,33 @@ OP_DH_10    jsr DISK_READBYTE     ;Get the total length
             lda #0                ;We have a length and counter
             sta ZP_WK_LO
             sta ZP_WK_HI
+            
+            lda #0
+            sta ZP_W_BUFRLO
+            lda #16384/256
+            sta ZP_W_BUFRHI 
 
 OP_FILELOOP 
             jsr DISK_READBYTE     ;Get next byte
+
+            ldy #0                ;Store the byte to the bufer
+            sta (ZP_W_BUFRLO),Y
+
+            inc ZP_W_BUFRLO      ;Increment lo pointer
+            bne OP_FL_BUF10       ;No wraparound, skip
+            inc ZP_W_BUFRHI      ;Increment hi pointer
+            lda ZP_W_BUFRHI      ;Is that beyond the bank?
+            cmp #32768/256
+            bne OP_FL_BUF10       ;It is not, just skip
+
+            lda #16384/256        ;Reset hi pointer to the bank beginning
+            sta ZP_W_BUFRHI
+            clc                   ;Advance to the next bank
+            lda ZP_CURRBANK
+            adc #4
+            sta ZP_CURRBANK      
+            sta PORTB             ;Tell MMU to get to the new bank
+OP_FL_BUF10 
 
             inc ZP_WK_LO          ;Just increment counter
             bne @+
