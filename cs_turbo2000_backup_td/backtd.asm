@@ -582,6 +582,7 @@ DISK_VERIFY_EYE
             jsr DSKINV
 
             lda DSTATS                ;Check the status
+            sta W_DSKIO_CODE          ;Keep the status for later
             cmp #1                    ;Is status OK (==1)?
             bne DVE_BAD               ;No, return 8
 
@@ -589,13 +590,14 @@ DVE_COMPARE
             ldx #DVE_T_EYE_L
 @           lda SEC_BUFFER-1,X
             cmp DVE_T_EYE-1,X
-            bne DVE_BAD
+            bne DVE_BAD2
             dex
             bne @-
 DVE_DONE
             SUBEXIT
 
-DVE_BAD     lda #8                    ;Set RC=8
+DVE_BAD     jsr MSG_DISK_ERROR
+DVE_BAD2    lda #8                    ;Set RC=8
             sta ZP_RETCODE
             jmp DVE_DONE
 
@@ -625,6 +627,7 @@ DISK_VERIFY_PRISTINE
             jsr DSKINV
 
             lda DSTATS                ;Check the status
+            sta W_DSKIO_CODE          ;Keep for later
             cmp #1                    ;Is status OK (==1)?
             bne DVP_BAD               ;No, return 8
 
@@ -632,13 +635,14 @@ DVP_COMPARE                           ;Check for all $55s
             ldx #128
 @           lda SEC_BUFFER-1,X
             cmp #$55
-            bne DVP_BAD               ;If value not expected, bad
+            bne DVP_BAD2              ;If value not expected, bad
             dex
             bne @-
 DVP_DONE
             SUBEXIT
 
-DVP_BAD     lda #8                    ;Set RC=8
+DVP_BAD     jsr MSG_DISK_ERROR
+DVP_BAD2    lda #8                    ;Set RC=8
             sta ZP_RETCODE
             jmp DVP_DONE
 ;-------------------------------------------------------------------------------
@@ -671,6 +675,7 @@ DISK_VERIFY_WRITABLE
             jsr DSKINV
 
             lda DSTATS                ;Check the status
+            sta W_DSKIO_CODE          ;Keep for later
             cmp #1                    ;Is status OK (==1)?
             bne DVW_BAD               ;No, return 8
 
@@ -678,6 +683,7 @@ DVW_DONE    SUBEXIT
 
 DVW_BAD     lda #8                    ;Set RC=8
             sta ZP_RETCODE
+            jsr MSG_DISK_ERROR
             jmp DVW_DONE            
 
 
@@ -739,6 +745,7 @@ WF_0        lda #1
             jsr DSKINV
 
             lda DSTATS                ;Check the status
+            sta W_DSKIO_CODE          ;Keep for later
             cmp #1                    ;Is status OK (==1)?
             bne WF_BAD               ;No, return 8
 
@@ -752,6 +759,7 @@ WF_DONE     SUBEXIT
 
 WF_BAD      lda #8                    ;Set RC=8
             sta ZP_RETCODE
+            jsr MSG_DISK_ERROR
             jmp WF_DONE
 ;-------------------------------------------------------------------------------
 ;Write the buffer to the current sector, but do not advance to the next sector.
@@ -775,6 +783,7 @@ WRITE_FORCE SUBENTRY
             jsr DSKINV
 
             lda DSTATS                ;Check the status
+            sta W_DSKIO_CODE          ;Keep for later
             cmp #1                    ;Is status OK (==1)?
             bne WFO_BAD              ;No, return 8
 
@@ -782,6 +791,7 @@ WFO_DONE    SUBEXIT
 
 WFO_BAD     lda #8                    ;Set RC=8
             sta ZP_RETCODE
+            jsr MSG_DISK_ERROR
             jmp WFO_DONE          
 ;-------------------------------------------------------------------------------
 ; Clear sector buffer
@@ -895,7 +905,7 @@ DISPLAY_LOADED_OK
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_LOADED_OK    dta c'  File loaded OK'
+M_LOADED_OK    dta c'File loaded OK'
 M_LOADED_OK_L  equ *-M_LOADED_OK
 
 ;-------------------------------------------------------------------------------
@@ -913,7 +923,7 @@ DISPLAY_LOAD_ERROR
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_LOAD_ERROR    dta c'  Load Error'
+M_LOAD_ERROR    dta c'Load Error'
 M_LOAD_ERROR_L  equ *-M_LOAD_ERROR
 
 
@@ -1002,7 +1012,7 @@ DISPLAY_WRITING_TO_DISK
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_WRITING_TO_DISK   dta c'  Writing data to disk...'
+M_WRITING_TO_DISK   dta c'Writing data to disk...'
 M_WRITING_TO_DISK_L equ *-M_WRITING_TO_DISK
 ;-------------------------------------------------------------------------------
 ; Display 'Writing data to disk OK'
@@ -1019,7 +1029,7 @@ DISPLAY_WRITTEN_TO_DISK
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_WRITTEN_TO_DISK   dta c'  Data written to disk'
+M_WRITTEN_TO_DISK   dta c'Data written to disk'
 M_WRITTEN_TO_DISK_L equ *-M_WRITTEN_TO_DISK
 
 ;-------------------------------------------------------------------------------
@@ -1037,20 +1047,8 @@ DISPLAY_WRITING_FAILED
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_WRITING_FAILED   dta c'  Writing to disk failed'
+M_WRITING_FAILED   dta c'Writing to disk failed'
 M_WRITING_FAILED_L   equ *-M_WRITING_FAILED
-
-;-------------------------------------------------------------------------------
-; Turbo header buffer
-;-------------------------------------------------------------------------------
-THEADER
-TH_TYPE     dta 0
-TH_NAME     dta c'..........'
-TH_LOAD     dta 0,0
-TH_LEN      dta 0,0
-TH_RUN      dta 0,0
-TH_END      EQU *
-THEADER_LEN EQU *-THEADER
 ;===============================================================================
 ; Messaging support
 ;===============================================================================
@@ -1070,6 +1068,37 @@ MSG_C_L1   sta MSG_BUF-1,X
            dex
            bne MSG_C_L1
            SUBEXIT              
+
+;-------------------------------------------------------------------------------
+;Specialized message - Disk error
+;-------------------------------------------------------------------------------
+MSG_DISK_ERROR
+           SUBENTRY
+           jsr  MSG_CLR           ;Clear buffer
+           COPYMSG MDE_TEXT MDE_TEXT_L
+
+           lda  W_DSKIO_CODE      ;Get the code
+           and  #$F0              ;Mask high nibble
+           lsr                    ;Shift to position
+           lsr
+           lsr
+           lsr
+           tax                    ;Get index to table
+           lda C_HEXTAB,X
+           ora #$80               ;Make it inverse
+           sta MSG_BUF+MDE_TEXT_L+1 ;Store to the message buffer
+
+           lda W_DSKIO_CODE       ;Get the code again
+           and #$0F               ;Mask the low nibble
+           tax
+           lda C_HEXTAB,X
+           ora #$80
+           sta MSG_BUF+MDE_TEXT_L+2          
+
+           jsr MSG_DISPLAY        ;Display the message
+           SUBEXIT 
+MDE_TEXT   dta c'I/O Error: '
+MDE_TEXT_L equ *-MDE_TEXT
 ;-------------------------------------------------------------------------------
 ; Display message buffer using CIO, channel 0.
 ;-------------------------------------------------------------------------------
@@ -1396,8 +1425,9 @@ DISK_READSECT SUBENTRY
             sta DBUFLO
             jsr DSKINV
 
-            lda DSTATS                ;Check the status
-            cmp #1                    ;Is status OK (==1)?
+            lda DSTATS               ;Check the status
+            sta W_DSKIO_CODE         ;Keep for later 
+            cmp #1                   ;Is status OK (==1)?
             bne DR_BAD               ;No, return 8
 
 DR_DONE
@@ -1405,6 +1435,7 @@ DR_DONE
 
 DR_BAD      lda #8                    ;Set RC=8
             sta ZP_RETCODE
+            jsr MSG_DISK_ERROR
             jmp DR_DONE
             SUBEXIT
 
@@ -1714,7 +1745,6 @@ WR_TERM        lda #64
                sta DMACLT             ;New
                rts
                
-               
 WR_RESET_ALL   ldy #0
                sty STATUS
                sty CHKSUM
@@ -1722,9 +1752,29 @@ WR_RESET_ALL   ldy #0
                sty DMACLT
                sty IRQEN
                clc
-               rts     
+               rts
 
+;===============================================================================
+; Global static data area
+;===============================================================================
+               dta c'@CDATA'
+C_HEXTAB       dta c'0123456789ABCDEF'     
+;===============================================================================
+; Data areas
+;===============================================================================
+               dta c'@WDATA'
+;Turbo header buffer
+THEADER
+TH_TYPE     dta 0
+TH_NAME     dta c'..........'
+TH_LOAD     dta 0,0
+TH_LEN      dta 0,0
+TH_RUN      dta 0,0
+TH_END      EQU *
+THEADER_LEN EQU *-THEADER
 
+;Disk operation error code backup
+W_DSKIO_CODE dta 0
 ;===============================================================================
 ; Filler
 ;===============================================================================
