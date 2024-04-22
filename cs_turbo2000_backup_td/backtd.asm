@@ -89,7 +89,12 @@
 PROGRAM_BEGIN
             jmp PROGRAM_CODE
             dta '** TURGEN - BACKUP T/D (c) 2024 BAKTRA Software **'
-PROGRAM_CODE              
+PROGRAM_CODE            
+            ;Prepare the base PORTB value
+            lda PORTB         ;Get current settings
+            and #($FF-$4-$8-$10) ;CPU eRAM + BANK 0
+            sta ZP_BASEBANK
+    
             jsr DOSINIT       ;Setup DOS vectors
             jsr SHOWMENU
 
@@ -151,10 +156,6 @@ VERIFY3_OK
             sta SEC_BUFFER
             jsr WRITE_FORCE
 
-;Prepare the base PORTB value
-            lda PORTB         ;Get current settings
-            and #($FF-$4-$8-$10) ;CPU eRAM + BANK 0
-            sta ZP_BASEBANK
 ;-------------------------------------------------------------------------------
 ; Decode header
 ;-------------------------------------------------------------------------------
@@ -1186,7 +1187,7 @@ SM_KEY2     cmp #$28                 ;Is that 'R'
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.05'
+SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.06'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -1551,6 +1552,27 @@ OP_FILELOOP_END
             jsr DISK_READ_DRAIN
 
 ;Record the file
+            lda #52                      ;Motor on
+            sta PACTL
+            jsr SHORT_DELAY              ;Wait for the motor
+
+;Write the header
+            lda #<(THEADER-1)
+            sta BUFRLO
+            lda #>(THEADER-1)
+            sta BUFRHI
+            lda #<(TH_END-1)
+            sta BFENLO
+            lda #>(TH_END-1)
+            sta BFENHI
+            lda #0
+            jsr WRITE_BLOCK
+
+            lda #60                      ;Motor off
+            sta PACTL
+
+
+;Continue to the next file
             jmp OP_NEWFILE
 
 ;Recording completion
@@ -1574,6 +1596,134 @@ OPR_M_START_TO_RECORD_L equ *-OPR_M_START_TO_RECORD
 
 OPR_M_REC_COMPLETE dta 'Recording complete. Press START'
 OPR_M_REC_COMPLETE_L equ *-OPR_M_REC_COMPLETE
+
+
+;=======================================================================
+; Write Turbo 2000 block
+; BUFRLO,BUFRHI  - Pointer right before first byte
+; BFENLO,BFENHI  - Pointer at the last byte of the block
+; A              - Identification byte
+;=======================================================================
+WRITE_BLOCK    pha                    ;Keep A in the stack
+
+               jsr WR_RESET_ALL       ;Reset coder
+               pla                    ;Restore A
+               sta ICAX6Z             ;Keep identification byte
+               sta CHKSUM             ;Use as base for check sum
+            
+               lda #192
+               sta AUDCTL
+               
+               ldx #24                ;Prepare pilot duration for header                 
+               lda ICAX6Z
+               beq WR_PILOTLEN        ;If ID zero, skip
+               ldx #28                ;Prepare pilot tone duration for data
+WR_PILOTLEN    stx STATUS             ;Keep status
+WR_PILOTL1     dey
+               bne WR_PILOTL1         ;Wait
+               lda #3                 
+               sta SKCTL              ;Generate half of pulse
+               ldy #119
+WR_PILOTL2     dey
+               bne WR_PILOTL2
+               lda #11
+               sta SKCTL              ;Generate half of pulse
+               ldy #118
+               dex
+               bne WR_PILOTL1         ;Continue with part of pilot tone  
+               dey
+               dey
+               dec STATUS              
+               bne WR_PILOTL1         ;Continue with part of pilot tone
+
+            
+               ldy #32                ;Generate SYNC pulse
+WR_SYNC1       dey
+               bne WR_SYNC1
+               lda #3
+               sta SKCTL
+               ldy #39
+WR_SYNC2       dey
+               bne WR_SYNC2
+               lda #11
+               sta SKCTL
+            
+               ldy #43                ;Generate bytes
+               sec
+               jmp WR_GBYTE
+            
+WR_PICKBYTE    lda BFENLO
+               cmp BUFRLO
+               lda BFENHI
+               sbc BUFRHI
+               bcc WR_GBYTE_CSM
+               lda (BUFRLO,X)
+               sta ICAX6Z
+               eor CHKSUM
+               sta CHKSUM
+            
+WR_GBYTE       jmp WR_GBYTE_NBIT      ;Go and generate byte
+WR_GBYTE_CSM   lda CHKSUM             
+               sta ICAX6Z
+               dex
+               sec
+               bcs WR_GBYTE
+WR_GBYTE_W1    dey
+               bne WR_GBYTE_W1
+               bcc WR_GBYTE_HI
+               ldy #48
+WR_GBYTE_W2    dey
+               bne WR_GBYTE_W2
+WR_GBYTE_HI    lda #3
+               sta SKCTL
+               ldy #46
+               bcc WR_GBYTE_W3
+               ldy #94
+WR_GBYTE_W3    dey
+               bne WR_GBYTE_W3
+               lda #11
+               sta SKCTL
+               clc
+               ldy #44
+            
+WR_GBYTE_NBIT  rol ICAX6Z             ;Still bits to go
+               bne WR_GBYTE_W1        ;Yes, write bit
+               inc BUFRLO             ;No, advance in the buffer
+               beq WR_ADVBUF             
+               bne WR_CHANI1
+WR_CHANI1      bne WR_CHAIN2
+WR_ADVBUF      inc BUFRHI
+WR_CHAIN2      ldy #32
+               txa
+               beq WR_PICKBYTE        ;Get other byte from buffer
+            
+WR_GBYTE_W4    dey                    ;Keep waiting 
+               bne WR_GBYTE_W4             
+            
+               lda #3                 ;Write safety pulse
+               sta SKCTL
+               lda #0
+               sta AUDCTL
+               jmp WR_TERM            ;Terminate
+               
+WR_TERM        lda #64
+               sta NMIEN
+               sta IRQEN
+               jsr WAIT_FOR_VBLANK   
+               lda #34                ;New
+               sta DMACLT             ;New
+               rts
+               
+               
+WR_RESET_ALL   ldy #0
+               sty STATUS
+               sty CHKSUM
+               sty NMIEN
+               sty DMACLT
+               sty IRQEN
+               clc
+               rts     
+
 
 ;===============================================================================
 ; Filler
