@@ -168,10 +168,12 @@ DEC_HEADER  lda #<THEADER     ;Setup address where turbo header will be placed
             sta BFENLO
             lda #>TH_END
             sta BFENHI
-            
+
+            jsr RESET_POKEY
             lda #0            ;First byte of the header should be 0
             jsr L0631         ;Call Turbo 2000 block decoding subroutine
             bcc DEC_HEADER    ;If error occured, try to decode the header again
+            jsr RESET_POKEY
 ;-------------------------------------------------------------------------------
 ; Process the header
 ;-------------------------------------------------------------------------------
@@ -210,7 +212,7 @@ BUF_B1      lda ZP_WK_LENHI  ;Check length (number of pages)
             adc #4
             sta ZP_LASTBANK
 
-            lda ZP_WK_LENHI    ;Calculate length remainder.
+            lda ZP_WK_LENHI   ;Calculate length remainder.
             sec
             sbc #16384/256
             sta ZP_WK_LENHI 
@@ -255,17 +257,19 @@ BUF_REM     lda ZP_WK_LENLO       ;Count number of bytes
 ;------------------------------------------------------------------------------- 
 ;Decode file data
 ;-------------------------------------------------------------------------------
+            jsr RESET_POKEY
             lda #255          ;First byte should be 255
             jsr L0631         ;Call Turbo 2000 block decoding subroutine
             bcs L0622         ;No error - jump
             
-ERRDATA     jsr DISPLAY_LOAD_ERROR
+ERRDATA     jsr RESET_POKEY
+            jsr DISPLAY_LOAD_ERROR
             jsr SHORT_DELAY
-
             jmp DEC_HEADER    ;And then try to load another file
 
 ;Decoding ok            
-L0622       jsr DISPLAY_LOADED_OK
+L0622       jsr RESET_POKEY
+            jsr DISPLAY_LOADED_OK
 ;-------------------------------------------------------------------------------
 ; Write the header data 
 ;-------------------------------------------------------------------------------
@@ -1131,13 +1135,30 @@ WFV_1              cmp VCOUNT
 ;-------------------------------------------------------------------------------                   
 SHORT_DELAY        SUBENTRY
                    ldy #220
-DELAY_LOOP_E       ldx #255            
-DELAY_LOOP_I       stx WSYNC
+SD_LOOP_E          ldx #255            
+SD_LOOP_I          stx WSYNC
                    dex
-                   bne DELAY_LOOP_I
+                   bne SD_LOOP_I
                    dey 
-                   bne DELAY_LOOP_E
+                   bne SD_LOOP_E
                    SUBEXIT
+;-------------------------------------------------------------------------------
+; Cassette gap delay
+;-------------------------------------------------------------------------------
+CASSETTE_GAP       SUBENTRY
+                   ldy #110
+                   jmp SD_LOOP_E
+
+;-------------------------------------------------------------------------------
+;Reset POKEY
+;-------------------------------------------------------------------------------
+RESET_POKEY        SUBENTRY 
+                   ldx #$0F
+                   lda #0
+@                  sta $D200-1,X
+                   dex
+                   bne @-
+                   SUBEXIT ,
 ;-------------------------------------------------------------------------------            
 ;Wait for the START key
 ;-------------------------------------------------------------------------------            
@@ -1216,7 +1237,7 @@ SM_KEY2     cmp #$28                 ;Is that 'R'
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.06'
+SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.07'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -1551,7 +1572,7 @@ OP_FILELOOP
             sta (ZP_W_BUFRLO),Y
 
             inc ZP_W_BUFRLO      ;Increment lo pointer
-            bne OP_FL_BUF10       ;No wraparound, skip
+            bne OP_FL_BUF10      ;No wraparound, skip
             inc ZP_W_BUFRHI      ;Increment hi pointer
             lda ZP_W_BUFRHI      ;Is that beyond the bank?
             cmp #32768/256
@@ -1582,26 +1603,100 @@ OP_FILELOOP_CONT
 OP_FILELOOP_END
             jsr DISK_READ_DRAIN
 
+;Keep information on the range for further processing
+            lda ZP_CURRBANK
+            sta W_REC_BANK
+            lda ZP_W_BUFRLO
+            sta W_REC_PTRLO
+            lda ZP_W_BUFRHI
+            sta W_REC_PTRHI
+
+;Set the default banks
+            lda ZP_BASEBANK
+            sta ZP_CURRBANK
+            sta ZP_LASTBANK
+            sta PORTB
+
 ;Record the file
+OP_RECORD_START
             lda #52                      ;Motor on
             sta PACTL
             jsr SHORT_DELAY              ;Wait for the motor
 
 ;Write the header
+OP_RECORD_HEADER
             lda #<(THEADER-1)
             sta BUFRLO
             lda #>(THEADER-1)
             sta BUFRHI
-            lda #<(TH_END-1)
+            lda #<(TH_END)
             sta BFENLO
-            lda #>(TH_END-1)
+            lda #>(TH_END)
             sta BFENHI
             lda #0
+            jsr RESET_POKEY
             jsr WRITE_BLOCK
 
-            lda #60                      ;Motor off
-            sta PACTL
+;Write the data block. The data of the data block was loaded to $4000
+;and continues to further banks if needed.
+OP_RECORD_RANGE
 
+;Restore the range
+            lda W_REC_BANK
+            sta ZP_CURRBANK
+            lda W_REC_PTRLO
+            sta ZP_W_BUFRLO
+            lda W_REC_PTRHI
+            sta ZP_W_BUFRHI
+
+;Adjust the range for the recording
+
+;            lda ZP_W_BUFRLO               ;Low pointer, about to wrap?
+;            bne @+
+;            dec ZP_W_BUFRHI               ;Otherwise decrement also hi pointer
+;@           dec ZP_W_BUFRLO               ;Decrement low pointer
+
+;            lda ZP_W_BUFRHI               ;Check high pointer
+;            cmp #[16384/256]-1            ;Wraparound?
+;            bne OP_RECORD_RANGE_DONE      ;No, we are OK
+;            sec                           ;Decrement the bank 
+;            lda ZP_CURRBANK
+;            sbc #4
+;            sta ZP_CURRBANK
+;            lda #[16384+16384-1]/256      ;And wrap the hi pointer
+;            sta ZP_W_BUFRHI
+
+OP_RECORD_RANGE_DONE
+
+            lda #255                      ;Point before the bank
+            sta BUFRLO
+            lda #[16384-1]/256 
+            sta BUFRHI
+
+            lda ZP_W_BUFRLO               ;End range + last bank
+            sta BFENLO
+            lda ZP_W_BUFRHI
+            sta BFENHI
+            lda ZP_CURRBANK
+            sta ZP_LASTBANK
+
+;Reset the bank settings
+            lda ZP_BASEBANK
+            sta ZP_CURRBANK
+            sta PORTB
+
+;Record the turbo block
+            lda #255
+            jsr WRITE_BLOCK
+
+            lda #60                       ;Motor off
+            sta PACTL
+            jsr RESET_POKEY
+
+;Reset the bank settings again
+            lda ZP_BASEBANK
+            sta ZP_CURRBANK
+            sta PORTB
 
 ;Continue to the next file
             jmp OP_NEWFILE
@@ -1627,8 +1722,6 @@ OPR_M_START_TO_RECORD_L equ *-OPR_M_START_TO_RECORD
 
 OPR_M_REC_COMPLETE dta 'Recording complete. Press START'
 OPR_M_REC_COMPLETE_L equ *-OPR_M_REC_COMPLETE
-
-
 ;=======================================================================
 ; Write Turbo 2000 block
 ; BUFRLO,BUFRHI  - Pointer right before first byte
@@ -1683,11 +1776,18 @@ WR_SYNC2       dey
                sec
                jmp WR_GBYTE
             
-WR_PICKBYTE    lda BFENLO
+WR_PICKBYTE    lda BFENLO             ;Check buffer range (lo)
                cmp BUFRLO
-               lda BFENHI
-               sbc BUFRHI
-               bcc WR_GBYTE_CSM
+               bne WR_DOBYTE          ;No match, continue
+
+               lda BFENHI             ;Check buffer range (hi)
+               cmp BUFRHI
+               bne WR_DOBYTE          ;No match, continue
+
+               lda ZP_CURRBANK        ;Check if the last bank
+               cmp ZP_LASTBANK        
+               beq WR_GBYTE_CSM       ;Last bank, go for checksum
+WR_DOBYTE      sec           
                lda (BUFRLO,X)
                sta ICAX6Z
                eor CHKSUM
@@ -1719,13 +1819,26 @@ WR_GBYTE_W3    dey
             
 WR_GBYTE_NBIT  rol ICAX6Z             ;Still bits to go
                bne WR_GBYTE_W1        ;Yes, write bit
-               inc BUFRLO             ;No, advance in the buffer
-               beq WR_ADVBUF             
-               bne WR_CHANI1
-WR_CHANI1      bne WR_CHAIN2
-WR_ADVBUF      inc BUFRHI
-WR_CHAIN2      ldy #32
-               txa
+
+WR_ADVBUF_00   ldy #32
+               inc BUFRLO             ;Increment lo pointer
+               bne WR_ADVBUF_90       ;No wraparound, done
+               ldy #30  
+               inc BUFRHI             ;Increment hi pointer
+               lda BUFRHI             ;Check if beyond the bank
+               cmp #32768/256         ;Is beyond the bank?
+               bne WR_ADVBUF_90       ;No, we are done
+
+               ldy #26
+               clc                    ;Advance to the next bank
+               lda ZP_CURRBANK
+               adc #4
+               sta ZP_CURRBANK
+               sta PORTB
+               lda #16384/256         ;Reset the hi pointer
+               sta BUFRHI             ;And store it
+
+WR_ADVBUF_90   txa
                beq WR_PICKBYTE        ;Get other byte from buffer
             
 WR_GBYTE_W4    dey                    ;Keep waiting 
@@ -1775,6 +1888,9 @@ THEADER_LEN EQU *-THEADER
 
 ;Disk operation error code backup
 W_DSKIO_CODE dta 0
+W_REC_BANK   dta 0
+W_REC_PTRLO  dta 0
+W_REC_PTRHI  dta 0
 ;===============================================================================
 ; Filler
 ;===============================================================================
