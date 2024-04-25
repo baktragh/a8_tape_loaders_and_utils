@@ -70,15 +70,23 @@
 ;=======================================================================
 ; Private constants
 ;=======================================================================
+                START_ADDR      = 2800
+                
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
                 VBI_VCOUNT      = 124
-                START_ADDR      = 2840
+                
                 ZP_BLOCKFLAG    = 130
                 ZP_ID_BYTE      = 131
-;
-                BF_NOSILENCE    = 0x80
-                BF_LONGPILOT    = 0x40
+
+;Block flag constants
+                
+                CS_PILOT_HEADER = 0x80;
+                CS_PILOT_DATA   = 0x40;
+                CS_PILOT_LOOSE  = 0x20;
+    
+                CS_GAP_NONE = 0x08;
+                CS_GAP_ELONGATED = 0x04;
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -120,9 +128,9 @@ LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
 ;-----------------------------------------------------------------------
 CFG_FLAGS  .BYTE  0
            CFG_F_COMPOSITE = $80       ;Part of composite
-           CFG_F_LONGGAP   = $40       ;Long gap
+           CFG_F_LONGSEP   = $40       ;Long separator
            CFG_F_ALARM     = $20       ;Alarm after saving
-CFG_LGAP_DURATION .BYTE (3*45)
+CFG_SEP_DURATION .BYTE (3*50)
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
@@ -163,12 +171,12 @@ SKIP_START         jsr BEEP
                    lda #52
                    sta PACTL
 
-                   bit CFG_FLAGS          ;Check if long gap requested
-                   bvc NORM_GAP           ;No, skip to normal delay
+                   bit CFG_FLAGS          ;Check if long separator requested
+                   bvc NORM_SEP           ;No, skip to normal delay
   
-                   ldy CFG_LGAP_DURATION  ;Long gap
-                   jsr DELAY_LOOP_E       ;Make long gap
-NORM_GAP           jsr SHORT_DELAY
+                   ldy CFG_SEP_DURATION   ;Long separator
+                   jsr DELAY_CUSTOM_Y     ;Make long separator
+NORM_SEP           jsr DELAY_SHORT        ;Make normal separator
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
@@ -207,10 +215,8 @@ SAVE_DOBLOCK       ldy #0                       ;Get ID byte
                    inc ZP_TAB_PTR_HI  
 
 ;Add some gaps between blocks
-SAVE_CONT          bit ZP_BLOCKFLAG             ;Check block flag
-                   bmi SAVE_NODELAY             ;If 0x80, skip the delay
-                   jsr SHORT_DELAY              ;Otherwise add a gap
-SAVE_NODELAY
+SAVE_CONT          jsr DELAY_BLOCK
+
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
 SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
@@ -264,23 +270,31 @@ BELL_1             jsr WAIT_FOR_VBLANK
 ;-----------------------------------------------------------------------
 ; Wait for VBLANK
 ;-----------------------------------------------------------------------
-WAIT_FOR_VBLANK    php
-                   lda #VBI_VCOUNT
-WFV_1              cmp VCOUNT
-                   bne WFV_1
-                   plp
-                   rts                                                   
+WAIT_FOR_VBLANK    lda #VBI_VCOUNT             ;Get the desired value
+WFV_1              cmp VCOUNT                  ;Check
+                   bne WFV_1                   ;If equal, keep checking
+WFV_2              cmp VCOUNT
+                   beq WFV_2                   
+                   rts             
 ;-----------------------------------------------------------------------
 ; Short delay
 ;-----------------------------------------------------------------------                   
-SHORT_DELAY        ldy #44
-DELAY_LOOP_E       ldx #255            
-DELAY_LOOP_I       stx WSYNC
-                   dex
-                   bne DELAY_LOOP_I
-                   dey 
-                   bne DELAY_LOOP_E
-                   rts
+DELAY_SHORT        ldy #5                  ;Short delay, 0.1 sec
+DELAY_CUSTOM_Y     jmp DELAY_WAIT
+
+DELAY_BLOCK        ldy #5                  ;Default is 0.1 sec
+                   lda ZP_BLOCKFLAG        ;Check block flag
+                   and #CS_GAP_NONE        ;Skip gap?
+                   bne DELAY_END           ;Yes, done
+                   lda ZP_BLOCKFLAG        ;Check again
+                   and #CS_GAP_ELONGATED   ;Is it elongated?
+                   beq DELAY_WAIT          ;No, stick to default
+                   ldy #50                 ;Yes, set to 1 second.
+
+DELAY_WAIT         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
+                   dey                     ;Decrement counter
+                   bne DELAY_WAIT          ;Repeat until not zero
+DELAY_END          rts
 
 ;=======================================================================
 ; Write block of data
@@ -297,10 +311,17 @@ WRITE_BLOCK    pha                    ;Keep A in the stack
                lda #192
                sta AUDCTL
 
-               ldx #14                ;Presume normal pilot tone
-               bit ZP_BLOCKFLAG       ;Check longer pilot flag (0x40)
-               bvc WR_PILOT           ;If not set, skip
-               ldx #22                ;Setup elongated pilot tone
+WR_PILOT_LEN_DET
+               ldx #10                ;Presume "loose" pilot tone.
+               lda ZP_BLOCKFLAG       ;Check what pilot we have?
+               and #CS_PILOT_HEADER   ;Is that header pilot?
+               beq @+                 ;No skip
+               ldx #30                ;Yes, header, 30*256
+               bne WR_PILOT           ;Then continue
+@              lda ZP_BLOCKFLAG       ;Check again
+               and #CS_PILOT_DATA     ;Is that pilot tone for data block
+               beq WR_PILOT           ;No, skip
+               ldx #12                ;Yes, have it 12*256 pulses
 
 WR_PILOT       
 WR_PILOTLEN    stx STATUS             ;Keep status
@@ -380,8 +401,8 @@ WR_CHAIN2      ldy #32
 WR_GBYTE_W4    dey                    ;Keep waiting 
                bne WR_GBYTE_W4             
             
-WR_SAFPULSE    ldy #12                ;Ensure safety pulse is long enough.
-               jsr DELAY_LOOP_E
+WR_SAFPULSE    ldy #5                 ;Ensure safety pulse is long enough.
+               jsr DELAY_CUSTOM_Y
                lda #3                 ;End the safety pulse
                sta SKCTL
                lda #0
@@ -430,3 +451,5 @@ DLIST      .BYTE 112,112,112
 ; Segment data table
 ;=======================================================================
             DATA_TABLE=*  
+            SFX_CAPACITY = 49152-DATA_TABLE-5-5-1
+            START = START_ADDR

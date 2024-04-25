@@ -9,16 +9,16 @@
 ;=======================================================================
 ; Private constants
 ;=======================================================================
+                START_ADDR      = 2840
+
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
                 VBI_VCOUNT      = 124
-                START_ADDR      = 2840
-                ZP_BLOCKFLAG    = 130
                 
-;
-                BF_NOSILENCE    = 0x80
-                BF_LONGPILOT    = 0x40
-                BF_LONGGAP      = 0x02
+                ZP_BLOCKFLAG    = 130
+
+                KSO_T2000_PILOT_LONG = $80
+                KSO_T2000_GAP_LONG   = $08
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -60,9 +60,9 @@ LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
 ;-----------------------------------------------------------------------
 CFG_FLAGS  .BYTE  0
            CFG_F_COMPOSITE = $80       ;Part of composite
-           CFG_F_LONGGAP   = $40       ;Long gap
+           CFG_F_LONGSEP   = $40       ;Long gap
            CFG_F_ALARM     = $20       ;Alarm after saving
-CFG_LGAP_DURATION .BYTE (3*45)
+CFG_SEP_DURATION .BYTE (3*45)
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
@@ -105,12 +105,12 @@ SKIP_START         jsr BEEP
                    sta PACTL
 .ENDIF
 
-                   bit CFG_FLAGS          ;Check if long gap requested
-                   bvc NORM_GAP           ;No, skip to normal delay
+                   bit CFG_FLAGS          ;Check if long sep requested (0x80)
+                   bvc NORM_SEP           ;No, skip to sep
   
-                   ldy CFG_LGAP_DURATION  ;Long gap
-                   jsr DELAY_LOOP_E       ;Make long gap
-NORM_GAP           jsr SHORT_DELAY
+                   ldy CFG_SEP_DURATION  ;Long sep duration
+                   jsr DELAY_CUSTOM_Y    ;Make long sep
+NORM_SEP           jsr DELAY_SHORT       ;Otherwise just short sep 
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
@@ -147,19 +147,8 @@ SAVE_DOBLOCK       jsr ADJUST_BUFFER            ;Adjust buffer
                    inc ZP_TAB_PTR_HI  
 
 ;Add some gaps between blocks
-SAVE_CONT          bit ZP_BLOCKFLAG             ;Check block flag
-                   bmi SAVE_NODELAY             ;If 0x80, skip the delay
+SAVE_CONT          jsr DELAY_BLOCK
 
-                   lda #$02                     ;Check if 0x02 (long delay)
-                   and ZP_BLOCKFLAG              
-                   beq SAVE_SHORTDELAY          ;If not, continue with short
-
-SAVE_LONGDELAY     ldy #120                     ;Set longer delay (2 s)
-                   jsr DELAY_LOOP_E             ;Do the long delay
-
-SAVE_SHORTDELAY
-                   jsr SHORT_DELAY              ;Otherwise add a gap
-SAVE_NODELAY
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
 SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
@@ -167,8 +156,7 @@ SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
                    lda #60                      ;For SIO variant, motor OFF
                    sta PACTL
 .ENDIF
-
-                   bit CFG_FLAGS                ;Check for composite($80)
+                   bit CFG_FLAGS                ;Check for composite ($80)
                    bmi SAVE_QUIT                ;If composite, quit
                    lda CFG_FLAGS                ;Check for alarm
                    and #CFG_F_ALARM                
@@ -215,24 +203,28 @@ BELL_1             jsr WAIT_FOR_VBLANK
 ;-----------------------------------------------------------------------
 ; Wait for VBLANK
 ;-----------------------------------------------------------------------
-WAIT_FOR_VBLANK    php
-                   lda #VBI_VCOUNT
-WFV_1              cmp VCOUNT
-                   bne WFV_1
-                   plp
-                   rts                                                   
+WAIT_FOR_VBLANK    lda #VBI_VCOUNT             ;Get the desired value
+WFV_1              cmp VCOUNT                  ;Check
+                   bne WFV_1                   ;If equal, keep checking
+WFV_2              cmp VCOUNT
+                   beq WFV_2                   
+                   rts             
 ;-----------------------------------------------------------------------
 ; Short delay
 ;-----------------------------------------------------------------------                   
-SHORT_DELAY        ldy #44
-DELAY_LOOP_E       ldx #255            
-DELAY_LOOP_I       stx WSYNC
-                   dex
-                   bne DELAY_LOOP_I
-                   dey 
-                   bne DELAY_LOOP_E
-                   rts
+DELAY_SHORT        ldy #5                  ;Short delay, 0.1 sec
+DELAY_CUSTOM_Y     jmp DELAY_WAIT
 
+DELAY_BLOCK        ldy #10                 ;Default is 0.2 sec
+                   lda ZP_BLOCKFLAG        ;Check block flag
+                   and #KSO_T2000_GAP_LONG ;Is it elongated?
+                   beq DELAY_WAIT          ;No, stick to default
+                   ldy #100                ;Yes, set to 2 seconds
+
+DELAY_WAIT         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
+                   dey                     ;Decrement counter
+                   bne DELAY_WAIT          ;Repeat until not zero
+DELAY_END          rts
 ;-----------------------------------------------------------------------
 ; Adjust buffer
 ;-----------------------------------------------------------------------
@@ -310,8 +302,9 @@ L0757       rts                    ; 60
 ;Write pilot tone (4*256 or 8*256 pulses)
 
 L0790       ldy #$04               ;Presume standard pilot tone
-            bit ZP_BLOCKFLAG       ; Check block flag for 0x40
-            bvc L0795              ; Not present, skip
+            lda ZP_BLOCKFLAG       ;Check if the block flag says othewrise
+            and #KSO_T2000_PILOT_LONG ; Request for elongated pilot?
+            beq L0795              ; No, skip         
             ldy #$08               ; Make long pilot tone
 
 L0795       lda #$00               ; A9 00
@@ -439,3 +432,5 @@ DLIST      .BYTE 112,112,112
 ; Segment data table
 ;=======================================================================
             DATA_TABLE=*  
+            SFX_CAPACITY = 49152-DATA_TABLE-5-5-1
+            START = START_ADDR
