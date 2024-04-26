@@ -178,7 +178,7 @@ DEC_HEADER  lda #<THEADER     ;Setup address where turbo header will be placed
 ; Process the header
 ;-------------------------------------------------------------------------------
 PROC_HEADER jsr DISPLAY_FOUND
-            jsr SHORT_DELAY
+            jsr DELAY_3S
 ;------------------------------------------------------------------------------- 
 ;Calculate the buffer range
 ;Start: BANK,BUFRHI,BUFRLO
@@ -264,7 +264,7 @@ BUF_REM     lda ZP_WK_LENLO       ;Count number of bytes
             
 ERRDATA     jsr RESET_POKEY
             jsr DISPLAY_LOAD_ERROR
-            jsr SHORT_DELAY
+            jsr DELAY_3S
             jmp DEC_HEADER    ;And then try to load another file
 
 ;Decoding ok            
@@ -374,7 +374,7 @@ WD_DONEINC
             jmp WD_DONE 
  
 WD_MSG_OK   jsr DISPLAY_WRITTEN_TO_DISK
-WD_DONE     jsr SHORT_DELAY
+WD_DONE     jsr DELAY_TENTH
 
 ;And when done with all this, go and load next file            
             jmp DEC_HEADER
@@ -1122,33 +1122,27 @@ MSG_DISPLAY SUBENTRY
 ;===============================================================================
 ; Miscellaneous routines
 ;===============================================================================
-;-------------------------------------------------------------------------------
-; Wait for VBLANK (using VCOUNT)
-;-------------------------------------------------------------------------------
-WAIT_FOR_VBLANK    SUBENTRY
-                   lda #VBI_VCOUNT
-WFV_1              cmp VCOUNT
-                   bne WFV_1
-                   SUBEXIT 
-;-------------------------------------------------------------------------------
-; Short delay 
-;-------------------------------------------------------------------------------                   
-SHORT_DELAY        SUBENTRY
-                   ldy #220
-SD_LOOP_E          ldx #255            
-SD_LOOP_I          stx WSYNC
-                   dex
-                   bne SD_LOOP_I
-                   dey 
-                   bne SD_LOOP_E
-                   SUBEXIT
-;-------------------------------------------------------------------------------
-; Cassette gap delay
-;-------------------------------------------------------------------------------
-CASSETTE_GAP       SUBENTRY
-                   ldy #110
-                   jmp SD_LOOP_E
-
+;-----------------------------------------------------------------------
+; Wait for VBLANK
+;-----------------------------------------------------------------------
+WAIT_FOR_VBLANK    lda #VBI_VCOUNT             ;Get the desired value
+WFV_1              cmp VCOUNT                  ;Check
+                   bne WFV_1                   ;If equal, keep checking
+WFV_2              cmp VCOUNT
+                   beq WFV_2                   
+                   rts             
+;-----------------------------------------------------------------------
+; Short delay
+;-----------------------------------------------------------------------
+DELAY_3S           ldy #3*50               ;Delay for name display
+                   jmp DELAY_WAIT                   
+DELAY_TENTH        ldy #5                  ;Short delay, 0.1 sec
+DELAY_CUSTOM_Y     jmp DELAY_WAIT
+ 
+DELAY_WAIT         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
+                   dey                     ;Decrement counter
+                   bne DELAY_WAIT          ;Repeat until not zero
+DELAY_END          rts
 ;-------------------------------------------------------------------------------
 ;Reset POKEY
 ;-------------------------------------------------------------------------------
@@ -1237,7 +1231,7 @@ SM_KEY2     cmp #$28                 ;Is that 'R'
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.07'
+SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.08'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -1248,7 +1242,7 @@ SM_M_ITEM0_L  equ *-SM_M_ITEM0
 SM_M_ITEM1    dta c'(B) Backup tape'
 SM_M_ITEM1_L  equ *-SM_M_ITEM1
 
-SM_M_ITEM2    dta c'(R) Record tape'
+SM_M_ITEM2    dta c'(R) Record on tape'
 SM_M_ITEM2_L  equ *-SM_M_ITEM2
  
 ;===============================================================================
@@ -1466,7 +1460,42 @@ DR_BAD      lda #8                    ;Set RC=8
 OP_RECORD 
 ;Display message and wait for the START key
             jsr MSG_CLR
-            COPYMSG OPR_M_START_TO_RECORD,OPR_M_START_TO_RECORD_L
+            COPYMSG OPR_M_RECORD1,OPR_M_RECORD1_L
+            jsr MSG_DISPLAY
+            jsr MSG_CLR
+            jsr MSG_DISPLAY
+            COPYMSG OPR_M_RECORD2,OPR_M_RECORD2_L
+            jsr MSG_DISPLAY
+            jsr MSG_CLR
+            COPYMSG OPR_M_RECORD3,OPR_M_RECORD3_L
+            jsr MSG_DISPLAY
+            jsr MSG_CLR
+            COPYMSG OPR_M_RECORD4,OPR_M_RECORD4_L
+            jsr MSG_DISPLAY
+ 
+            lda #255
+            sta CH
+OP_RECORD_WAIT_KEY
+            lda CH
+            cmp #$3F                    ;Is that 'A'
+            bne @+                      ;Nope, try other
+            lda #10                     ;Yes, set 10 VBLs (0.2 s)
+            bne OP_RECORD_STORE_SEP     ;And go store it
+
+@           cmp #$15                    ;Is that 'B'
+            bne @+                      ;Nope, try other
+            lda #50                     ;Yes, set 50 VBLs (1.0 s)
+            bne OP_RECORD_STORE_SEP
+
+@           cmp #$12                    ;Is that 'C'
+            bne OP_RECORD_WAIT_KEY      ;Nope, try again
+            lda #150                    ;Yes, set 150 VBLs (3.0 s)                  
+
+OP_RECORD_STORE_SEP
+            sta W_REC_SEPDURATION
+
+            jsr MSG_CLR
+            COPYMSG OPR_M_RECORD5,OPR_M_RECORD5_L
             jsr MSG_DISPLAY
             jsr WAIT_START
 
@@ -1619,9 +1648,14 @@ OP_FILELOOP_END
 
 ;Record the file
 OP_RECORD_START
+            ldy #40                      ;Allow disk to calm down (0.8 s)
+            jsr DELAY_CUSTOM_Y
+ 
             lda #52                      ;Motor on
             sta PACTL
-            jsr SHORT_DELAY              ;Wait for the motor
+
+            ldy W_REC_SEPDURATION        ;How long the separator is?
+            jsr DELAY_CUSTOM_Y           ;Write silence accordingly.
 
 ;Write the header
 OP_RECORD_HEADER
@@ -1648,23 +1682,6 @@ OP_RECORD_RANGE
             sta ZP_W_BUFRLO
             lda W_REC_PTRHI
             sta ZP_W_BUFRHI
-
-;Adjust the range for the recording
-
-;            lda ZP_W_BUFRLO               ;Low pointer, about to wrap?
-;            bne @+
-;            dec ZP_W_BUFRHI               ;Otherwise decrement also hi pointer
-;@           dec ZP_W_BUFRLO               ;Decrement low pointer
-
-;            lda ZP_W_BUFRHI               ;Check high pointer
-;            cmp #[16384/256]-1            ;Wraparound?
-;            bne OP_RECORD_RANGE_DONE      ;No, we are OK
-;            sec                           ;Decrement the bank 
-;            lda ZP_CURRBANK
-;            sbc #4
-;            sta ZP_CURRBANK
-;            lda #[16384+16384-1]/256      ;And wrap the hi pointer
-;            sta ZP_W_BUFRHI
 
 OP_RECORD_RANGE_DONE
 
@@ -1717,15 +1734,25 @@ OP_BADREAD
             jmp OP_EXIT
 
 
-OPR_M_START_TO_RECORD dta 125,'Press START to begin recording'
-OPR_M_START_TO_RECORD_L equ *-OPR_M_START_TO_RECORD
+OPR_M_RECORD1 dta 125,'Recording on tape'
+OPR_M_RECORD1_L equ *-OPR_M_RECORD1
+
+OPR_M_RECORD2 dta 'Press A for (0.2 s) gaps'
+OPR_M_RECORD2_L equ *-OPR_M_RECORD2
+OPR_M_RECORD3 dta 'Press B for (1.0 s) gaps'
+OPR_M_RECORD3_L equ *-OPR_M_RECORD3
+OPR_M_RECORD4 dta 'Press C for (3.0 s) gaps'
+OPR_M_RECORD4_L equ *-OPR_M_RECORD4
+
+OPR_M_RECORD5 dta 'Press START to begin recording'
+OPR_M_RECORD5_L equ *-OPR_M_RECORD5
 
 OPR_M_REC_COMPLETE dta 'Recording complete. Press START'
 OPR_M_REC_COMPLETE_L equ *-OPR_M_REC_COMPLETE
 ;=======================================================================
 ; Write Turbo 2000 block
 ; BUFRLO,BUFRHI  - Pointer right before first byte
-; BFENLO,BFENHI  - Pointer at the last byte of the block
+; BFENLO,BFENHI  - Pointer past the last byte of the block
 ; A              - Identification byte
 ;=======================================================================
 WRITE_BLOCK    pha                    ;Keep A in the stack
@@ -1891,6 +1918,8 @@ W_DSKIO_CODE dta 0
 W_REC_BANK   dta 0
 W_REC_PTRLO  dta 0
 W_REC_PTRHI  dta 0
+;Duration of the file separator
+W_REC_SEPDURATION dta 10
 ;===============================================================================
 ; Filler
 ;===============================================================================
