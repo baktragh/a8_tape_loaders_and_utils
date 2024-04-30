@@ -136,7 +136,7 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
                    sta ZP_BLOCKFLAG 
 
-                   lda BUFRLO
+                   lda BUFRLO             ;Check for terminator (all $FFs)
                    and BUFRHI
                    and BFENLO
                    and BFENHI
@@ -158,7 +158,7 @@ SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ; - Motor off
 ; - RESET POKEY
 ;-------------------------------------------------------------------------------
-SAVE_TERM          lda #60
+SAVE_TERM          lda #60                      ;Motor OFF
                    sta PACTL
 
                    jsr TAPE_TERM_POKEY          ;Terminate POKEY
@@ -226,18 +226,13 @@ DELAY_WAIT         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
                    dey                     ;Decrement counter
                    bne DELAY_WAIT          ;Repeat until not zero
 DELAY_END          rts
-
 ;===============================================================================
 ; Write block of data
 ; Inputs:
-; BUFRLO,BUFRHI  - Right before first byte
+; BUFRLO,BUFRHI  - First byte
 ; BFENLO,BFENHI  - Last byte
 ;===============================================================================
 WRITE_BLOCK        
-
-;We are going to use SIO to write raw tape blocks.
-;We need to adjust the buffer range, so that we have buffer start
-;and length, for the SIO call
 
 ;Ensure correct IRG
                    lda ZP_BLOCKFLAG
@@ -256,54 +251,57 @@ WRITE_BLOCK
                    jsr TAPE_IRG_08_0
 @                  tya
                    and #STANDARD_PILOT_03_0
-                   bne @+
+                   beq @+
                    jsr TAPE_IRG_03_0     
 ;First calculate length.
 @
 WB_RANGE
+;Calculate the length of the block (BFEN-BUFR+1)
                    sec
-                   lda BFENHI
-                   sbc BUFRHI
-                   sta ZP_SIO_LENHI
                    lda BFENLO
                    sbc BUFRLO
                    sta ZP_SIO_LENLO
+                   lda BFENHI
+                   sbc BUFRHI
+                   sta ZP_SIO_LENHI
 
-;Then increment the buffer pointer
+                   inc ZP_SIO_LENLO
+                   bne @+
+                   inc ZP_SIO_LENHI
+@
+;Setup the buffer pointer for the SIO call.
                    lda BUFRLO
                    sta ZP_SIO_BUFRLO
                    lda BUFRHI
                    sta ZP_SIO_BUFRHI
-
-                   inc ZP_SIO_BUFRLO
-                   bne @+
-                   inc ZP_SIO_BUFRHI
-@
 ;Now prepare the SIO call
                    lda #$60               ;Cassette
                    sta DDEVIC
                    lda #0                 
                    sta DUNIT              ;Zero unit
-                   sta DCOMND             ;No command
                    sta DUNUSE             ;Zero unused byte
                    sta DAUX1              ;Zero AUX1 byte
-          
-                   lda #$80               ;Indicate Write
-                   sta DSTATS
-           
-                   lda ZP_SIO_BUFRLO     ;Set buffer address
+ 
+                   lda #$80               ;Indicate
+                   sta DSTATS             ;Write
+                   sta DAUX2              ;Short tape IRG
+
+                   lda #$05               ;Set some bogus timeout         
+                   sta DTIMLO             
+
+                   lda #$50               ;Command = put sector
+                   sta DCOMND   
+
+                   lda ZP_SIO_BUFRLO      ;Set buffer address
                    sta DBUFLO
                    lda ZP_SIO_BUFRHI
                    sta DBUFHI
           
-                   lda ZP_SIO_LENLO      ;Set buffer length
+                   lda ZP_SIO_LENLO       ;Set buffer length
                    sta DBYTLO
                    lda ZP_SIO_LENHI
                    sta DBYTHI
-          
-                   lda #$80               ;Short gaps between records
-                   sta DAUX2
-          
+
                    jsr SIOV               ;Call SIO 
 
                    rts
@@ -313,20 +311,20 @@ WB_RANGE
 ;-------------------------------------------------------------------------------
 ;Initialize tape recording
 ;-------------------------------------------------------------------------------
-TAPE_INIT_POKEY   lda SSKCTL                   
-	              and #$0f
-	              ora #$20
-	              ora #$08
-	              sta SSKCTL
+TAPE_INIT_POKEY   lda SSKCTL              ;Get shadow          
+	              and #$0f                ;Reset serial control
+	              ora #$20                ;Set mode sync/timing mode
+	              ora #$08                ;Set two-tone mode (tape)
+	              sta SSKCTL              ;Set shadow and real port
 	              sta SKCTL
 
-                  ldx #9
+                  ldx #9                  ;Set POKEY regs for tape writing
 TIP_LOOP_REG      lda TIP_REGDATA-1,X
                   sta AUDF1-1,X
                   dex
                   bne TIP_LOOP_REG
                     
-TIP_NOISY_AUDIO	
+TIP_NOISY_AUDIO	                          ;Ensure "noisy I/O"
                   lda #$a8
                   sta audc4
                   lda #$10
@@ -336,9 +334,9 @@ TIP_NOISY_AUDIO
                   sta audc2
 TIP_NOISY_DONE
 
-TIP_RESET_SERIAL_STATUS
+TIP_RESET_SERIAL_STATUS                    ;Reset serial port
 	              sta SKREST
-	              rts
+	              rts                      
 TIP_REGDATA
                   dta	$05		;audf1
                   dta	$a0		;audc1
@@ -350,7 +348,7 @@ TIP_REGDATA
                   dta	$a0		;audc4
                   dta	$28		;audctl
 ;-------------------------------------------------------------------------------
-; Terminate pokey
+; Terminate POKEY setup for tape writing
 ;-------------------------------------------------------------------------------
 TAPE_TERM_POKEY   lda #0
 	              sta audc1
@@ -358,21 +356,22 @@ TAPE_TERM_POKEY   lda #0
 	              sta audc4
                   rts 
 ;-------------------------------------------------------------------------------
-; Variaus tape IRGs
+; Variaus tape IRGs, for PAL/NTSC
+; TODO: Replace this with some table based code.
 ;-------------------------------------------------------------------------------
 TAPE_IRG_20_0    lda PAL
                  and #$0F
                  bne TIRG_20_N
 TIRG_20_P
-                 lda #<1000
+                 lda #<900
                  sta W_IRG_LO
-                 lda #>1000
+                 lda #>900
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE
 
-TIRG_20_N        lda #<1200
+TIRG_20_N        lda #<1050
                  sta W_IRG_LO
-                 lda #>1200
+                 lda #>1050
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE
 ;-------------------------------------------------------------------------------
@@ -380,15 +379,15 @@ TAPE_IRG_16_0    lda PAL
                  and #$0F
                  bne TIRG_16_N
 TIRG_16_P
-                 lda #<787
+                 lda #<786
                  sta W_IRG_LO
-                 lda #>787
+                 lda #>786
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE
 
-TIRG_16_N        lda #<945
+TIRG_16_N        lda #<944
                  sta W_IRG_LO
-                 lda #>945
+                 lda #>944
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE
 ;-------------------------------------------------------------------------------
@@ -396,15 +395,15 @@ TAPE_IRG_08_0    lda PAL
                  and #$0F
                  bne TIRG_08_N
 TIRG_08_P
-                 lda #<387
+                 lda #<386
                  sta W_IRG_LO
-                 lda #>387
+                 lda #>386
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE
 
-TIRG_08_N        lda #<465
+TIRG_08_N        lda #<464
                  sta W_IRG_LO
-                 lda #>465
+                 lda #>464
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE
 ;-------------------------------------------------------------------------------
@@ -412,15 +411,15 @@ TAPE_IRG_03_0    lda PAL
                  and #$0F
                  bne TIRG_03_N
 
-TIRG_03_P        lda #<138
+TIRG_03_P        lda #<136
                  sta W_IRG_LO
-                 lda #>138
+                 lda #>136
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE
 TIRG_03_N
-                 lda #<165
+                 lda #<164
                  sta W_IRG_LO
-                 lda #>165
+                 lda #>164
                  sta W_IRG_HI
                  jmp TAPE_IRG_CORE        
 ;-------------------------------------------------------------------------------
@@ -435,11 +434,11 @@ TAPE_IRG_CORE
 	             lda:rne timflg
 	             rts
 ;-------------------------------------------------------------------------------
-; Countdown handler
+; Countdown handler, just kills the TIMFLG
 ;-------------------------------------------------------------------------------
 TAPE_COUNTDOWN_HANDLER
-	mva		#0	timflg
-	rts
+	             mva #0	timflg
+	             rts
 ;===============================================================================
 ; DISPLAY DATA
 ;===============================================================================
@@ -459,7 +458,7 @@ DLIST      .BYTE 112,112,112
 W_IRG_LO   .BYTE 0
 W_IRG_HI   .BYTE 0
 ;===============================================================================
-; Segment data table
+; Block data table
 ;===============================================================================
             DATA_TABLE=*
             SFX_CAPACITY = 49152-DATA_TABLE-5-5-1
