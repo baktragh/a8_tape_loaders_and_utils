@@ -21,12 +21,6 @@
                 ZP_SIO_BUFRHI   = 132
                 ZP_SIO_LENLO    = 133
                 ZP_SIO_LENHI    = 134
-
-;Block flag constants
-                STANDARD_PILOT_20_0     = 0x80;         ;20 s
-                STANDARD_PILOT_16_0     = 0x40;         ;16 s
-                STANDARD_PILOT_08_0     = 0x20;         ;8  s
-                STANDARD_PILOT_03_0     = 0x10;         ;3  s
 ;===============================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -75,14 +69,7 @@ CFG_SEP_DURATION .BYTE (3*50)
 ;Initialization
 ;------------------------------------------------------------------------
 ENTRY_ADDR         jsr WAIT_FOR_VBLANK
-
-                   sei                                 
-                   lda #<DLIST          ;Setup display list
-                   sta SDLSTL
-                   lda #>DLIST
-                   sta SDLSTH
-                   cli
-
+                   jsr SET_PRIMARY_DL
                    jsr WAIT_FOR_VBLANK ;Enable the screen
                    lda #34
                    sta SDMCTL
@@ -109,6 +96,9 @@ SKIP_START         jsr BEEP
 ; - Silence for file separation
 ; - Setup POKEY for writing cassette frames with customized IRGs
 ;-------------------------------------------------------------------------------
+                   jsr SET_RECORDING_DL
+                   jsr WAIT_FOR_VBLANK
+
                    lda #52
                    sta PACTL
 
@@ -162,6 +152,8 @@ SAVE_TERM          lda #60                      ;Motor OFF
                    sta PACTL
 
                    jsr TAPE_TERM_POKEY          ;Terminate POKEY
+                   jsr SET_PRIMARY_DL           ;Back to primary DL 
+                   jsr WAIT_FOR_VBLANK
 
                    bit CFG_FLAGS                ;Check for composite($80)
                    bmi SAVE_QUIT                ;If composite, quit
@@ -187,7 +179,6 @@ WFS_LOOP           lda CONSOL             ;What keys?
                    beq WFS_DONE           ;Yes, we are done
                    bne WFS_LOOP
 WFS_DONE           rts
-                   
 ;===============================================================================
 ; OTHER SUBROUTINES
 ;===============================================================================                   
@@ -215,7 +206,29 @@ WFV_1              cmp VCOUNT                  ;Check
                    bne WFV_1                   ;If equal, keep checking
 WFV_2              cmp VCOUNT
                    beq WFV_2                   
-                   rts             
+                   rts           
+;-------------------------------------------------------------------------------
+; Set primary DL
+;-------------------------------------------------------------------------------
+SET_PRIMARY_DL
+                   sei                                 
+                   lda #<DLIST          ;Setup display list
+                   sta SDLSTL
+                   lda #>DLIST
+                   sta SDLSTH
+                   cli
+                   rts
+;-------------------------------------------------------------------------------
+; Set recording DL
+;-------------------------------------------------------------------------------
+SET_RECORDING_DL
+                   sei                                 
+                   lda #<DLIST_R        ;Setup display list
+                   sta SDLSTL
+                   lda #>DLIST_R
+                   sta SDLSTH
+                   cli
+                   rts
 ;-------------------------------------------------------------------------------
 ; Short delay
 ;-------------------------------------------------------------------------------                   
@@ -432,6 +445,7 @@ TIRG_TABLE_NTSC .WORD 0                 ;0.25
 ;-------------------------------------------------------------------------------
 ; Display list
 ;-------------------------------------------------------------------------------
+;Primary display list
 DLIST      .BYTE 112,112,112
            .BYTE 7+64,<LINE_NAME,>LINE_NAME
            .BYTE 112,112
@@ -439,6 +453,14 @@ DLIST      .BYTE 112,112,112
            .BYTE $30
            .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2
            .BYTE 65,<DLIST,>DLIST
+
+;Display list used while recording
+DLIST_R    .BYTE 112,112,112
+           .BYTE 7+64,<LINE_REC,>LINE_REC
+           .BYTE 65,<DLIST_R,>DLIST_R
+
+;                 12345678901234567890
+LINE_REC   .BYTE "RECORDING...        " 
 ;===============================================================================
 ; DATA AREAS
 ;===============================================================================
