@@ -194,7 +194,7 @@ WFS_DONE           rts
 ;-------------------------------------------------------------------------------
 ; Beep
 ;-------------------------------------------------------------------------------                   
-BEEP 	           lda #0
+BEEP               lda #0
                    sta AUDCTL
                    lda #$AF
                    sta AUDC1
@@ -235,26 +235,9 @@ DELAY_END          rts
 WRITE_BLOCK        
 
 ;Ensure correct IRG
-                   lda ZP_BLOCKFLAG
-                   tay 
-                   and #STANDARD_PILOT_20_0
-                   beq @+
-                   jsr TAPE_IRG_20_0
-                   jmp WB_RANGE
-@                  tya
-                   and #STANDARD_PILOT_16_0
-                   beq @+
-                   jsr TAPE_IRG_16_0
-@                  tya
-                   and #STANDARD_PILOT_08_0
-                   beq @+
-                   jsr TAPE_IRG_08_0
-@                  tya
-                   and #STANDARD_PILOT_03_0
-                   beq @+
-                   jsr TAPE_IRG_03_0     
-;First calculate length.
-@
+                   lda ZP_BLOCKFLAG        ;Check block flag
+                   beq WB_RANGE            ;Code 0, minimum IRG
+                   jsr TAPE_IRG            ;Other code, specific IRG
 WB_RANGE
 ;Calculate the length of the block (BFEN-BUFR+1)
                    sec
@@ -312,11 +295,11 @@ WB_RANGE
 ;Initialize tape recording
 ;-------------------------------------------------------------------------------
 TAPE_INIT_POKEY   lda SSKCTL              ;Get shadow          
-	              and #$0f                ;Reset serial control
-	              ora #$20                ;Set mode sync/timing mode
-	              ora #$08                ;Set two-tone mode (tape)
-	              sta SSKCTL              ;Set shadow and real port
-	              sta SKCTL
+                  and #$0f                ;Reset serial control
+                  ora #$20                ;Set mode sync/timing mode
+                  ora #$08                ;Set two-tone mode (tape)
+                  sta SSKCTL              ;Set shadow and real port
+                  sta SKCTL
 
                   ldx #9                  ;Set POKEY regs for tape writing
 TIP_LOOP_REG      lda TIP_REGDATA-1,X
@@ -324,7 +307,7 @@ TIP_LOOP_REG      lda TIP_REGDATA-1,X
                   dex
                   bne TIP_LOOP_REG
                     
-TIP_NOISY_AUDIO	                          ;Ensure "noisy I/O"
+TIP_NOISY_AUDIO                          ;Ensure "noisy I/O"
                   lda #$a8
                   sta audc4
                   lda #$10
@@ -335,110 +318,114 @@ TIP_NOISY_AUDIO	                          ;Ensure "noisy I/O"
 TIP_NOISY_DONE
 
 TIP_RESET_SERIAL_STATUS                    ;Reset serial port
-	              sta SKREST
-	              rts                      
+                  sta SKREST
+                  rts
 TIP_REGDATA
-                  dta	$05		;audf1
-                  dta	$a0		;audc1
-                  dta	$07		;audf2
-                  dta	$a0		;audc2
-                  dta	$cc		;audf3
-                  dta	$a0		;audc3
-                  dta	$05		;audf4
-                  dta	$a0		;audc4
-                  dta	$28		;audctl
+                  dta$05;audf1
+                  dta$a0;audc1
+                  dta$07;audf2
+                  dta$a0;audc2
+                  dta$cc;audf3
+                  dta$a0;audc3
+                  dta$05;audf4
+                  dta$a0;audc4
+                  dta$28;audctl
 ;-------------------------------------------------------------------------------
 ; Terminate POKEY setup for tape writing
 ;-------------------------------------------------------------------------------
 TAPE_TERM_POKEY   lda #0
-	              sta audc1
-	              sta audc2
-	              sta audc4
+                  sta audc1
+                  sta audc2
+                  sta audc4
                   rts 
 ;-------------------------------------------------------------------------------
-; Variaus tape IRGs, for PAL/NTSC
-; TODO: Replace this with some table based code.
+; Tape IRG for PAL/NTSC
+; Input: ZP_BLOCKFLAG holds IRG duration code.
 ;-------------------------------------------------------------------------------
-TAPE_IRG_20_0    lda PAL
-                 and #$0F
-                 bne TIRG_20_N
-TIRG_20_P
-                 lda #<900
-                 sta W_IRG_LO
-                 lda #>900
-                 sta W_IRG_HI
-                 jmp TAPE_IRG_CORE
+TAPE_IRG         lda ZP_BLOCKFLAG            ;Double the code           
+                 clc
+                 adc ZP_BLOCKFLAG
+                 tax
 
-TIRG_20_N        lda #<1050
-                 sta W_IRG_LO
-                 lda #>1050
-                 sta W_IRG_HI
-                 jmp TAPE_IRG_CORE
-;-------------------------------------------------------------------------------
-TAPE_IRG_16_0    lda PAL
-                 and #$0F
-                 bne TIRG_16_N
-TIRG_16_P
-                 lda #<786
-                 sta W_IRG_LO
-                 lda #>786
-                 sta W_IRG_HI
-                 jmp TAPE_IRG_CORE
+                 lda PAL                     ;Check GTIA region
+                 and #$0F                    ;Are we PAL, pals?
+                 bne TIRG_PAL                ;Yes, use PAL timing
 
-TIRG_16_N        lda #<944
+TIRG_NTSC        lda TIRG_TABLE_NTSC,X
                  sta W_IRG_LO
-                 lda #>944
+                 lda TIRG_TABLE_NTSC+1,X
                  sta W_IRG_HI
-                 jmp TAPE_IRG_CORE
-;-------------------------------------------------------------------------------
-TAPE_IRG_08_0    lda PAL
-                 and #$0F
-                 bne TIRG_08_N
-TIRG_08_P
-                 lda #<386
-                 sta W_IRG_LO
-                 lda #>386
-                 sta W_IRG_HI
-                 jmp TAPE_IRG_CORE
+                 jmp TIRG_CORE  
 
-TIRG_08_N        lda #<464
+TIRG_PAL         lda TIRG_TABLE_PAL,X
                  sta W_IRG_LO
-                 lda #>464
+                 lda TIRG_TABLE_PAL+1,X
                  sta W_IRG_HI
-                 jmp TAPE_IRG_CORE
 ;-------------------------------------------------------------------------------
-TAPE_IRG_03_0    lda PAL
-                 and #$0F
-                 bne TIRG_03_N
-
-TIRG_03_P        lda #<136
-                 sta W_IRG_LO
-                 lda #>136
-                 sta W_IRG_HI
-                 jmp TAPE_IRG_CORE
-TIRG_03_N
-                 lda #<164
-                 sta W_IRG_LO
-                 lda #>164
-                 sta W_IRG_HI
-                 jmp TAPE_IRG_CORE        
-;-------------------------------------------------------------------------------
-TAPE_IRG_CORE
+TIRG_CORE
                  mwa #TAPE_COUNTDOWN_HANDLER CDTMA1
-	             ldy W_IRG_LO
-	             lda W_IRG_HI
-	             tax
+                 ldy W_IRG_LO
+                 lda W_IRG_HI
+                 tax
                  lda #1
                  sta timflg
                  jsr SETVBV
-	             lda:rne timflg
-	             rts
+                 lda:rne timflg
+                 rts
 ;-------------------------------------------------------------------------------
 ; Countdown handler, just kills the TIMFLG
 ;-------------------------------------------------------------------------------
 TAPE_COUNTDOWN_HANDLER
-	             mva #0	timflg
-	             rts
+                 mva #0 timflg
+                 rts
+;-------------------------------------------------------------------------------
+; IRG TABLES
+;-------------------------------------------------------------------------------
+; PAL IRG Table
+TIRG_TABLE_PAL  .WORD 0                ;0.25
+                .WORD 1                ;0.27
+                .WORD 1                ;0.29
+                .WORD 2                ;0.30
+                .WORD 4                ;0.35
+                .WORD 7                ;0.4
+                .WORD 12               ;0.5
+                .WORD 27               ;0.8
+                .WORD 37               ;1.0
+                .WORD 62               ;1.5
+                .WORD 87               ;2.0
+                .WORD 107              ;2.4
+                .WORD 112              ;2.5
+                .WORD 137              ;3.0
+                .WORD 237              ;5.0
+                .WORD 387              ;8.0
+                .WORD 487              ;10.0
+                .WORD 587              ;12.0
+                .WORD 687              ;14.0
+                .WORD 787              ;16.0
+                .WORD 987              ;20.0
+
+; NTSC IRG Table
+TIRG_TABLE_NTSC .WORD 0                 ;0.25
+                .WORD 1                 ;0.27
+                .WORD 2                 ;0.29
+                .WORD 2                 ;0.30
+                .WORD 5                 ;0.35
+                .WORD 8                 ;0.4
+                .WORD 14                ;0.5
+                .WORD 32                ;0.8
+                .WORD 44                ;1.0
+                .WORD 74                ;1.5
+                .WORD 104               ;2.0
+                .WORD 128               ;2.4
+                .WORD 134               ;2.5
+                .WORD 164               ;3.0
+                .WORD 284               ;5.0
+                .WORD 464               ;8.0
+                .WORD 584               ;10.0
+                .WORD 704               ;12.0
+                .WORD 824               ;14.0
+                .WORD 944               ;16.0
+                .WORD 1184              ;20.0
 ;===============================================================================
 ; DISPLAY DATA
 ;===============================================================================
