@@ -149,6 +149,9 @@ RELO_P2_L lda  1024-128,X
 .ENDIF          
           jsr SCREEN              ;Setup screen
 
+          lda #52                 ;Motor on
+          sta PACTL
+
 BLTOP     jsr GET_BLOCK           ;Get first block
 BL_START  
 ;===============================================================================
@@ -267,10 +270,12 @@ GB_SIOSET lda #$60               ;Cassette
           sta DDEVIC
           lda #0                 
           sta DUNIT              ;Zero unit
-          sta DCOMND             ;No command
           sta DUNUSE             ;Zero unused byte
           sta DAUX1              ;Zero AUX1 byte
-          
+
+          lda #$52
+          sta DCOMND             ;No command
+
           lda #64                ;Indicate READ
           sta DSTATS
            
