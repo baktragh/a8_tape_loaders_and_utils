@@ -4,7 +4,9 @@
 
 
             .INCLUDE "equates.asm"
-            *=1024
+            ENTRY_ADDR = 1484
+            *=ENTRY_ADDR
+            
 
 L05D2       jsr DOSINIT       ;Setup DOS vectors   
             ldx #<TITLE       ;Display title
@@ -226,10 +228,12 @@ TITLE       .BYTE "TURBO 2000",$9B
 ;-----------------------------------------------
 ;Initialization of DOS vectors
 ;-----------------------------------------------
-DOSINIT     ldx #<1024
+DOSINIT     ldx #<ENTRY_ADDR
             stx DOSINI
-            ldx #>1024
+            ldx #>ENTRY_ADDR
             stx DOSINI+1
-            ldx #0
-            sta WARMST
+            ldx #1
+            stx BOOT
+            dex
+            stx COLDST
             rts 
