@@ -1,5 +1,5 @@
 ;===============================================================================
-; Standard Self-extractor skeleton   
+; Standard Tape Records Self-extractor skeleton   
 ; Assemble with the MADS assembler
 ;===============================================================================
            
@@ -9,7 +9,7 @@
 ;===============================================================================
 ; Private constants
 ;===============================================================================
-                START_ADDR      = 2800
+                START_ADDR      = 2688
                 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
@@ -21,6 +21,9 @@
                 ZP_SIO_BUFRHI   = 132
                 ZP_SIO_LENLO    = 133
                 ZP_SIO_LENHI    = 134
+
+                ZP_IRG_LO       = 135
+                ZP_IRG_HI       = 136
 ;===============================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -75,7 +78,7 @@ ENTRY_ADDR         jsr WAIT_FOR_VBLANK
                    sta SDMCTL
                    lda #0
                    sta COLOR2
-                   lda #$1A
+                   lda #$4A
                    sta COLOR0
                    sta COLOR1                                       
 ;-----------------------------------------------------------------------
@@ -155,7 +158,7 @@ SAVE_TERM          lda #60                      ;Motor OFF
                    jsr SET_PRIMARY_DL           ;Back to primary DL 
                    jsr WAIT_FOR_VBLANK
 
-                   bit CFG_FLAGS                ;Check for composite($80)
+                   bit CFG_FLAGS                ;Check for composite flg ($80)
                    bmi SAVE_QUIT                ;If composite, quit
                    lda CFG_FLAGS                ;Check for alarm
                    and #CFG_F_ALARM                
@@ -309,8 +312,7 @@ WB_RANGE
 ;-------------------------------------------------------------------------------
 TAPE_INIT_POKEY   lda SSKCTL              ;Get shadow          
                   and #$0f                ;Reset serial control
-                  ora #$20                ;Set mode sync/timing mode
-                  ora #$08                ;Set two-tone mode (tape)
+                  ora #$28                ;Set mode sync/timing mode+two tone
                   sta SSKCTL              ;Set shadow and real port
                   sta SKCTL
 
@@ -334,15 +336,15 @@ TIP_RESET_SERIAL_STATUS                    ;Reset serial port
                   sta SKREST
                   rts
 TIP_REGDATA
-                  dta$05;audf1
-                  dta$a0;audc1
-                  dta$07;audf2
-                  dta$a0;audc2
-                  dta$cc;audf3
-                  dta$a0;audc3
-                  dta$05;audf4
-                  dta$a0;audc4
-                  dta$28;audctl
+                  dta $05                  ;audf1
+                  dta $a0                  ;audc1
+                  dta $07                  ;audf2
+                  dta $a0                  ;audc2
+                  dta $cc                  ;audf3
+                  dta $a0                  ;audc3
+                  dta $05                  ;audf4
+                  dta $a0                  ;audc4
+                  dta $28                  ;audctl
 ;-------------------------------------------------------------------------------
 ; Terminate POKEY setup for tape writing
 ;-------------------------------------------------------------------------------
@@ -365,20 +367,20 @@ TAPE_IRG         lda ZP_BLOCKFLAG            ;Double the code
                  bne TIRG_PAL                ;Yes, use PAL timing
 
 TIRG_NTSC        lda TIRG_TABLE_NTSC,X
-                 sta W_IRG_LO
+                 sta ZP_IRG_LO
                  lda TIRG_TABLE_NTSC+1,X
-                 sta W_IRG_HI
+                 sta ZP_IRG_HI
                  jmp TIRG_CORE  
 
 TIRG_PAL         lda TIRG_TABLE_PAL,X
-                 sta W_IRG_LO
+                 sta ZP_IRG_LO
                  lda TIRG_TABLE_PAL+1,X
-                 sta W_IRG_HI
+                 sta ZP_IRG_HI
 ;-------------------------------------------------------------------------------
 TIRG_CORE
                  mwa #TAPE_COUNTDOWN_HANDLER CDTMA1
-                 ldy W_IRG_LO
-                 lda W_IRG_HI
+                 ldy ZP_IRG_LO
+                 lda ZP_IRG_HI
                  tax
                  lda #1
                  sta timflg
@@ -456,7 +458,7 @@ DLIST      .BYTE 112,112,112
 
 ;Display list used while recording
 DLIST_R    .BYTE 112,112,112
-           .BYTE 7+64,<LINE_REC,>LINE_REC
+           .BYTE 6+64,<LINE_REC,>LINE_REC
            .BYTE 65,<DLIST_R,>DLIST_R
 
 ;                 12345678901234567890
@@ -464,8 +466,6 @@ LINE_REC   .BYTE "RECORDING...        "
 ;===============================================================================
 ; DATA AREAS
 ;===============================================================================
-W_IRG_LO   .BYTE 0
-W_IRG_HI   .BYTE 0
 ;===============================================================================
 ; Block data table
 ;===============================================================================
