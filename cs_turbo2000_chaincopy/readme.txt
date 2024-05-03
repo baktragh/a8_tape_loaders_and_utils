@@ -1,6 +1,6 @@
 CHAINCOPY 1.3 - Auxiliary copy utility
-for TURGEN SYSTEM and Czechoslovak Turbo 2000
-http://turgen.sourceforge.net/
+for TURGEN and Czechoslovak Turbo 2000
+https://turgen.sourceforge.io/
 ========================================================================
 
 1. Overview
@@ -20,6 +20,9 @@ Chaincopy requires an XL or XE machine with at least 64 KB of RAM.
 
 2. Why to use Chaincopy 
 =======================
+
+2.1 Convert Type 04 Files to the ChainLoading Format
+----------------------------------------------------
 
 The Turbo 2000 system does not provide a file format that would allow you to
 load, save, and run segmented binary load files. You can use TYPE 04 files to
@@ -44,8 +47,15 @@ you can create your own tapes as follows:
    To convert the binary load file, use the Turbo 2000 plugin and select
    the Binary file to binary turbo conversion.
    
-3. Save your binary file in the Turbo 2000 - ChainLoading file format to a tape.      
-   
+3. Save your binary file in the Turbo 2000 - ChainLoading file format to a tape.
+
+2.2 Powerful Turbo 2000 Copier
+------------------------------
+If you are not interested in using the ChainLoading format, you can still use
+CHAINCOPY as a powerful copier for Turbo 2000.
+CHAINCOPY offers massive buffer size (52 KB), and, since its buffer is at fixed address,
+you can copy files that load to extremely low or high addresses.
+    
 3. Notes
 ========
 - To exit the copier, press the OPTION key
