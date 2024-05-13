@@ -114,26 +114,13 @@ cputs("L   List files on Backup T/D disk");
 gotoxy(2,6);
 cputs(".   Extract files from disk");
 gotoxy(2,7);
-cputs("B   Toggle binary file extaction [ ]");
+cprintf("B   Toggle binary file extaction [%c]",cExtractXEX);
 gotoxy(2,8);
-cputs("C   Toggle tape image extraction [ ]");
+cprintf("C   Toggle tape image extraction [%c]",cExtractCAS);
 gotoxy(2,10);
-cputs("1-8 Select BACKUP T/D disk drive [ ]");
+cprintf("1-8 Select BACKUP T/D disk drive [%c]",cSourceDrive);
 gotoxy(2,11);
-cputs("T   Select target device [  ]");
-
-/*Configuration*/
-gotoxy(36,7);
-cputc(cExtractXEX);
-gotoxy(36,8);
-cputc(cExtractCAS);
-gotoxy(36,10);
-cputc(cSourceDrive);
-
-gotoxy(28,11);
-cputc(cTargetDeviceLetter);
-gotoxy(29,11);
-cputc(cTargetDeviceNumber);
+cprintf("T   Select target device [%c%c]",cTargetDeviceLetter,cTargetDeviceNumber);
 
 }
 
@@ -198,13 +185,15 @@ void listDisk() {
 unsigned char unitNumber = cSourceDrive-'0';
 unsigned char rc = 0;
 char nameBuffer[11];
+char sizeBuffer[5];
 unsigned int fileSize;
 unsigned int currentSector;
 unsigned int numSectors;
 unsigned int remainderBytes;
 
-
+/*Put zero terminators to strings*/
 nameBuffer[10]=0;
+sizeBuffer[4]=0;
 
 clrscr();
 cputs("  Listing disk...\r\n\r\n");
@@ -251,10 +240,6 @@ if (sectorBuffer[0]=='E') break;
 /*Get file name*/
 memcpy(nameBuffer,sectorBuffer+4,10);
 
-/*Print file name*/
-cputs("  ");
-cputs(nameBuffer);
-cputs("\r\n");
 
 /*Go to the first data sector*/
 ++currentSector;
@@ -275,6 +260,10 @@ if (sectorBuffer[0]!='D') {
 
 /*Get the file size*/
 fileSize=sectorBuffer[1]+256*sectorBuffer[2];
+itoa(fileSize,sizeBuffer,16);
+
+/*Print file name and file size*/
+cprintf("  %10s $%04X\r\n",nameBuffer,fileSize);
 
 /*Calculate the next header sector*/
 numSectors = (fileSize+3)/128;
@@ -293,15 +282,7 @@ cgetc();
 
 void handleDiskError(unsigned char returnCode) {
 
-char hexCode[3];
-itoa(returnCode,hexCode,16);
-hexCode[2]=0;
-
-cputs("\r\n");    
-cputs("  Disk I/O Error $");
-cputs(hexCode);
-cputs(". Press any key.\r\n");
-
+cprintf("\r\n  Disk I/O Error $%02X. Press any key.\r\n",returnCode);    
 cgetc();
 
 }
