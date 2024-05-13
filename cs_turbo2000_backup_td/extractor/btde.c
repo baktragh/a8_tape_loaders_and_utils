@@ -3,18 +3,29 @@
 */
 
 #include <conio.h>
-
+#include <atari.h>
+#include <stdlib.h>
+#include <string.h>
 
 unsigned char cExtractCAS;
 unsigned char cExtractXEX;
 unsigned char cSourceDrive;
 unsigned char cTargetDeviceLetter;
 unsigned char cTargetDeviceNumber;
+unsigned char sectorBuffer[128];
+
+
+#define SNO_MARKING   33
+#define SNO_PRISTINE  34
+#define SNO_DATA      35
 
 
 void paintMenu();
 void clearKeyInput();
 void selectTargetDevice();
+unsigned char readSector(void* buffer,unsigned char unitNumber,unsigned int sectorNumber);
+void listDisk();
+void handleDiskError(unsigned char returnCode);
 
 int main() {
 
@@ -58,6 +69,10 @@ else if (menuKey=='c' || menuKey=='C') {
         continue;
     }
 
+else if (menuKey=='l' || menuKey=='L') {
+listDisk();
+}
+
 /*Input disk drive selection*/
 else if (menuKey>='1' && menuKey<='8') {
    cSourceDrive=menuKey;
@@ -87,7 +102,7 @@ cursor(0);
 
 /*Title*/
 gotoxy(2,0);
-cputs("Backup T/D Extractor");
+cputs("Backup T/D Extractor 0.01");
 gotoxy(2,1);
 cputs("(c) 2024 BAKTRA Software");
 
@@ -97,7 +112,7 @@ cputs("Main Menu");
 gotoxy(2,5);
 cputs("L   List files on Backup T/D disk");
 gotoxy(2,6);
-cputs("E   Extract files from disk");
+cputs(".   Extract files from disk");
 gotoxy(2,7);
 cputs("B   Toggle binary file extaction [ ]");
 gotoxy(2,8);
@@ -164,10 +179,10 @@ else if (menuKey>='A' && menuKey<='Z') {
   continue;
 }
 
-else if (menuKey==27) {
+else if (menuKey==CH_ESC) {
   return;
 }
-else if (menuKey==155) {
+else if (menuKey==CH_ENTER) {
   cTargetDeviceLetter=letter;
   cTargetDeviceNumber=number;
   return;
@@ -178,7 +193,136 @@ else if (menuKey==155) {
 
 }
 
+/*List contents of the disk*/
+void listDisk() {
+unsigned char unitNumber = cSourceDrive-'0';
+unsigned char rc = 0;
+char nameBuffer[11];
+unsigned int fileSize;
+unsigned int currentSector;
+unsigned int numSectors;
+unsigned int remainderBytes;
+
+
+nameBuffer[10]=0;
+
+clrscr();
+cputs("  Listing disk...\r\n\r\n");
+
+/*Read sector with marking*/
+rc = readSector(&sectorBuffer,unitNumber,SNO_MARKING);
+
+if (rc!=1) {
+  handleDiskError(rc);
+  return;
+}
+
+/*Check for the marking*/
+if (memcmp("TURGEN BACKUP T/D 1.00",&sectorBuffer,22)!=0) {
+  cputs("  Not a BACKUP T/D disk. Press any key.");
+  cgetc();
+  return; 
+}
+
+/*Position to the first sector with data*/
+currentSector = SNO_DATA;
+
+/*Now perform the listing*/
+while(1) {
+
+/*Read the sector*/
+rc = readSector(&sectorBuffer,unitNumber,currentSector);
+if (rc!=1) {
+  handleDiskError(rc);
+  return;
+}
+
+/*Check if the sector begins with 'H' or 'E'*/
+if (sectorBuffer[0]!='H' && sectorBuffer[0]!='E') {
+   cputs("  Sector mark H or E not found.\r\n");
+   cputs("  Press any key.");
+   cgetc();
+   return;
+}
+
+/*If end marker found, listing is complete*/
+if (sectorBuffer[0]=='E') break;
+
+/*Get file name*/
+memcpy(nameBuffer,sectorBuffer+4,10);
+
+/*Print file name*/
+cputs("  ");
+cputs(nameBuffer);
+cputs("\r\n");
+
+/*Go to the first data sector*/
+++currentSector;
+/*Read the data sector*/
+rc = readSector(&sectorBuffer,unitNumber,currentSector);
+if (rc!=1) {
+  handleDiskError(rc);
+  return;
+}
+
+/*Check if the marking is 'D'*/
+if (sectorBuffer[0]!='D') {
+   cputs("  Sector mark D not found.\r\n");
+   cputs("  Press any key.");
+   cgetc();
+   return;
+}
+
+/*Get the file size*/
+fileSize=sectorBuffer[1]+256*sectorBuffer[2];
+
+/*Calculate the next header sector*/
+numSectors = (fileSize+3)/128;
+remainderBytes = (fileSize+3)%128;
+currentSector+=numSectors;
+if (remainderBytes!=0) currentSector++;
+
+}
+
+
+cputs("  Listing complete. Press any key\r\n");
+clearKeyInput();
+cgetc();
+
+}
+
+void handleDiskError(unsigned char returnCode) {
+
+char hexCode[3];
+itoa(returnCode,hexCode,16);
+hexCode[2]=0;
+
+cputs("\r\n");    
+cputs("  Disk I/O Error $");
+cputs(hexCode);
+cputs(". Press any key.\r\n");
+
+cgetc();
+
+}
+
+unsigned char readSector(void* buffer,unsigned char unitNumber,unsigned int sectorNumber) {
+
+OS.dcb.dunit = unitNumber;
+OS.dcb.dcomnd = 'R';
+OS.dcb.dstats = 0;
+OS.dcb.dbuf = buffer;
+OS.dcb.dtimlo = 10;
+OS.dcb.daux = sectorNumber;
+
+__asm__ (" pha ");
+__asm__ (" jsr $E453 ");
+__asm__ (" pla ");
+
+return OS.dcb.dstats;
+}
+
 
 void clearKeyInput() {
-while(kbhit());
+
 }
