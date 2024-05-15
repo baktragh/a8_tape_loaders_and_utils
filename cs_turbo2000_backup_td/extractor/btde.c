@@ -9,13 +9,16 @@
 #include <errno.h>
 
 
-
 unsigned char cExtractCAS;
 unsigned char cExtractXEX;
 unsigned char cSourceDrive;
 unsigned char cTargetDeviceLetter;
 unsigned char cTargetDeviceNumber;
+unsigned char cSequentialNaming;
+unsigned char cConfirmEachExtraction;
+
 unsigned char sectorBuffer[128];
+
 
 #define SNO_MARKING   33
 #define SNO_PRISTINE  34
@@ -53,6 +56,7 @@ unsigned char verifyDisk(unsigned char unitNumber);
 unsigned char normalizeTurboName(char *turboName,unsigned char maxLength);
 unsigned char retryPrompt(char* message);
 unsigned char writeFile(char* name, unsigned int fileSize, unsigned int firstSector,unsigned char unitNumber,turboHeader_t *tHeader);
+void flipYNOption(unsigned char* optionByte);
 
 int main() {
 
@@ -64,6 +68,8 @@ cExtractXEX='Y';
 cSourceDrive='1';
 cTargetDeviceLetter='H';
 cTargetDeviceNumber='1';
+cSequentialNaming='N';
+cConfirmEachExtraction='N';
 
 /*Pain main menu and clear key input*/
 
@@ -77,24 +83,21 @@ menuKey = cgetc();
 
 /*Flip binary file extraction*/
 if (menuKey=='b' || menuKey=='B') {
-        if (cExtractXEX=='Y') {
-           cExtractXEX='N'; 
-        }
-        else {
-           cExtractXEX='Y';
-        }
-        continue;
-    }
+flipYNOption(&cExtractXEX);        
+}
 /*Flip tape image extraction*/
 /*else if (menuKey=='c' || menuKey=='C') {
-        if (cExtractCAS=='Y') {
-          cExtractCAS='N';
-         }
-        else {
-          cExtractCAS='Y';
-         }
-        continue;
+     flipYNOption(&cExtractCAS);
 }*/
+
+/*Flip sequential naming*/
+else if (menuKey=='s' || menuKey=='S') {
+flipYNOption(&cSequentialNaming);
+}
+
+else if (menuKey=='y' || menuKey=='Y') {
+flipYNOption(&cConfirmEachExtraction);
+}
 
 else if (menuKey=='l' || menuKey=='L') {
 listDisk();
@@ -120,6 +123,7 @@ else if  (menuKey=='e' || menuKey=='E') {
 
 /*Exit*/
 else if (menuKey=='q' || menuKey=='Q') {
+    clrscr();
     break;
 }
 
@@ -142,7 +146,7 @@ cursor(0);
 
 /*Title*/
 
-cprintf("  Backup T/D Extractor 0.02\r\n");
+cprintf("  Backup T/D Extractor 0.03\r\n");
 cprintf("  (c) 2024 BAKTRA Software\r\n\r\n");
 
 /*Menu items*/
@@ -152,8 +156,10 @@ cprintf("  1-8 Select BACKUP T/D disk drive [%c]\r\n",cSourceDrive);
 cprintf("  L   List files on Backup T/D disk\r\n\r\n");
 cprintf("  T   Select target device [%c%c]\r\n",cTargetDeviceLetter,cTargetDeviceNumber);
 cprintf("  E   Extract files from disk\r\n\r\n");
-cprintf("  B   Toggle binary file extaction [%c]\r\n",cExtractXEX);
-cprintf("  .   Toggle tape image extraction [%c]\r\n\r\n",cExtractCAS);
+cprintf("  B   Extract binary/flat files [%c]\r\n",cExtractXEX);
+cprintf("  .   Extract tape images       [%c]\r\n",cExtractCAS);
+cprintf("  S   Use sequential naming     [%c]\r\n",cSequentialNaming);
+cprintf("  Y   Confirm each extraction   [%c]\r\n\r\n",cConfirmEachExtraction);
 cprintf("  Q   Quit\r\n");
 
 
@@ -219,8 +225,12 @@ else if (menuKey==CH_ENTER) {
 void extractFiles() {
 unsigned char unitNumber = cSourceDrive-'0';
 unsigned char rc=0;
-char turboNameBuffer[11];
-char nameBuffer[3+10+1+3+1];
+
+char turboNameString[11];
+char finalNameString[64];
+char numberPrefixString[5];
+char extensionString[5];
+
 unsigned int currentSector;
 unsigned int baseSector;
 unsigned int len;
@@ -229,6 +239,8 @@ turboHeader_t headerCopy;
 char* extPtr;
 unsigned int numSectors;
 unsigned int remainderBytes;
+unsigned int seqNumber=0;
+char oneChar;
 
 /*Tell that we are extracting files*/
 clrscr();
@@ -265,22 +277,14 @@ if (sectorBuffer[0]=='E') break;
 
 /*Copy the header, and copy the turbo name*/
 memcpy(&headerCopy,sectorBuffer+3,sizeof(turboHeader_t));
-memcpy(turboNameBuffer,&(headerCopy.turboName),10);
-turboNameBuffer[10]=0;
+memcpy(turboNameString,&(headerCopy.turboName),10);
+turboNameString[10]=0;
 
 /*Remember sector where the file began*/
 baseSector=currentSector+1;
 
-/*Prepare file name*/
-nameBuffer[0]=cTargetDeviceLetter;
-nameBuffer[1]=cTargetDeviceNumber;
-nameBuffer[2]=':';
-
 /*Normalize the turbo name*/
-len = normalizeTurboName(turboNameBuffer,cTargetDeviceLetter=='H'?10:8);
-
-/*Place the normalized name to the buffer*/
-memcpy(nameBuffer+3,turboNameBuffer,len);
+len = normalizeTurboName(turboNameString,cTargetDeviceLetter=='H'?10:8);
 
 /*Place file extension*/
 switch (headerCopy.type) {
@@ -296,18 +300,47 @@ switch (headerCopy.type) {
      extPtr=".DAT";
      break;
 }
-memcpy(nameBuffer+3+len,extPtr,4);
 
-/*Place termination character*/
-nameBuffer[3+len+4]=0;
+/*Construct the final output name*/
+if (cSequentialNaming=='Y') {
+   if (cTargetDeviceLetter=='H') {
+     snprintf(numberPrefixString,5,"%03d_",seqNumber);
+     memcpy(extensionString,extPtr,5); 
+    }
+    else {
+      numberPrefixString[0]=0;
+      oneChar=extPtr[1];
+      snprintf(extensionString,5,".%c%02X",oneChar,seqNumber);
+    }
+}
+else {
+   numberPrefixString[0]=0;
+   memcpy(extensionString,extPtr,5);
+}
+
+snprintf(finalNameString,64,"%c%c:%s%s%s",cTargetDeviceLetter,cTargetDeviceNumber,numberPrefixString,turboNameString,extensionString);
 
 /*Print the file name and all information from the header*/
-cprintf("\r\n  %-10s %02X $%04X $%04X $%04X\r\n",turboNameBuffer,headerCopy.type,headerCopy.load, headerCopy.run, headerCopy.length);
-cprintf("  ->%s\r\n",nameBuffer);
+cprintf("\r\n  %-10s %02X $%04X $%04X $%04X\r\n",turboNameString,headerCopy.type,headerCopy.load, headerCopy.run, headerCopy.length);
+cprintf("  ->%s\r\n",finalNameString);
+
+/*If each extraction is to be confirmed, now it is good time to ask*/
+if (cConfirmEachExtraction=='Y') {
+cputs("\r\n  Confirm extraction Y/N?\r\n");
+while(1) {
+  oneChar = cgetc();
+  if (oneChar=='n' || oneChar=='N') {
+    goto skip_extraction;
+  }
+  else if (oneChar=='y' || oneChar=='Y') {
+    break;
+  }
+}
+}
 
 /*Try to write the file*/
 extract_retry:
-rc = writeFile(nameBuffer,headerCopy.length,baseSector,unitNumber,&headerCopy);
+rc = writeFile(finalNameString,headerCopy.length,baseSector,unitNumber,&headerCopy);
 if (rc!=RC_OK) {
   retryCode = retryPrompt("Extraction failed.");
 }
@@ -333,11 +366,15 @@ if (retryCode==RETRY_SKIP) {
    cputs("  Extraction skipped\r\n");
 }
 
+skip_extraction:
+
 /*Navigate to the beginning of the next file and continue*/
 numSectors = (headerCopy.length+3)/128;
 remainderBytes = (headerCopy.length+3)%128;
 currentSector=baseSector+numSectors;
 if (remainderBytes!=0) currentSector++;
+
+++seqNumber;
 
 } /*For all disk entries*/
 
@@ -647,6 +684,16 @@ unsigned char retryPrompt(char* message) {
       return RETRY_SKIP;
     }
   }
+}
+
+void flipYNOption(unsigned char* optionByte) {
+if (*optionByte=='N') {
+   *optionByte='Y';
+}
+else {
+   *optionByte='N';
+}
+
 }
 
 void clearKeyInput() {
