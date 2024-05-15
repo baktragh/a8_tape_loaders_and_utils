@@ -32,8 +32,8 @@
 ; End of filesystem marker
 ; The sector begins with 'E'
 ;*******************************************************************************
-            ICL 'equates.asm'
-            ICL 'auxmacs.mac'
+            ICL 'asminc/equates.asm'
+            ICL 'asminc/auxmacs.mac'
 
             OPT H-,F-
 ;-------------------------------------------------------------------------------
@@ -858,7 +858,7 @@ DISPLAY_TITLE SUBENTRY
            jsr MSG_DISPLAY
 
            SUBEXIT
-M_TITLE    dta 125,c'BACKUP T/D - Backup Tape'
+M_TITLE    dta 125,c'Backup Tape'
 M_TITLE_L  equ *-M_TITLE
 ;-------------------------------------------------------------------------------
 ; Display PRESS START to begin backup
@@ -1231,7 +1231,7 @@ SM_KEY2     cmp #$28                 ;Is that 'R'
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'TURGEN - BACKUP T/D 0.08'
+SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 0.09'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -1734,7 +1734,7 @@ OP_BADREAD
             jmp OP_EXIT
 
 
-OPR_M_RECORD1 dta 125,'Recording on tape'
+OPR_M_RECORD1 dta 125,'Record on tape'
 OPR_M_RECORD1_L equ *-OPR_M_RECORD1
 
 OPR_M_RECORD2 dta 'Press A for (0.2 s) gaps'
