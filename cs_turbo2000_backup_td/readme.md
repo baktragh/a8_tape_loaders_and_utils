@@ -37,7 +37,9 @@ The disk provides the following functions:
 ### Considerations
 
 * The Backup tape function, when started, always overwrites all files on the disk. If the disk is not pristine,
-  a warning message is displayed. Do not press RESET until a full tape side is backed up.
+  a warning message is displayed.
+* Do not press RESET until a full tape side is backed up
+* To exit the utility disk, you can press SHIFT+ESC. This will result in cold start.
 
 ## Backup T/D Extractor
 

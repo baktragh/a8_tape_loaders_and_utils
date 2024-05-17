@@ -1,0 +1,34 @@
+;*******************************************************************************
+; Auxiliary macros
+;*******************************************************************************
+SUBENTRY .MACRO
+          pha
+          tya
+          pha
+          txa
+          pha
+          .ENDM
+
+SUBEXIT  .MACRO
+          pla
+          tax
+          pla
+          tay
+          pla
+          rts
+          .ENDM
+
+UPDATERC  .MACRO
+          lda ZP_W_MAXRC
+          ora ZP_RETCODE
+          sta ZP_W_MAXRC
+          .ENDM
+
+COPYMSG   .MACRO text len
+           ldx #:len
+@          lda :text-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           .ENDM
+

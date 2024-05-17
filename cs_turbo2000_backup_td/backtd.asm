@@ -75,7 +75,7 @@
             MENU_CODE_BACKUP  EQU 0
             MENU_CODE_LISTING EQU 1
             MENU_CODE_RECORD  EQU 2
-            
+            MENU_CODE_EXIT    EQU 3
 ;-------------------------------------------------------------------------------
 ; Mainline code
 ;-------------------------------------------------------------------------------
@@ -83,32 +83,69 @@
             .byte $00
             .byte [[PROGRAM_END-PROGRAM_START]/128]+1
             .word PROGRAM_START
-            .word PROGRAM_BEGIN
-
+            .word PROGRAM_INIT
+PROGRAM_BOOT_CONTINUATION
+            lda #<PROGRAM_BEGIN
+            sta DOSVEC
+            lda #>PROGRAM_BEGIN
+            sta DOSVEC+1
+            clc
+            rts
 ;Initialize the copier
+PROGRAM_INIT 
+            rts
+;Main program
 PROGRAM_BEGIN
             jmp PROGRAM_CODE
             dta '** TURGEN - BACKUP T/D (c) 2024 BAKTRA Software **'
 PROGRAM_CODE            
+            lda W_FIRST_RUN   ;Check for first run, $FF indicates that
+            bne PC_FIRST      ;If so, skip to the PORTB setup
+
+PC_NOT_FIRST                  ;Restore the PORTB setting.
+            sei
+            lda #0
+            sta NMIEN
+            sta DMACLT
+            lda W_FIRST_BANK
+            sta PORTB
+            lda #$40
+            sta NMIEN
+            lda #34
+            sta DMACLT
+            cli
+PC_FIRST
             ;Prepare the base PORTB value
             lda PORTB         ;Get current settings
             and #($FF-$4-$8-$10) ;CPU eRAM + BANK 0
             sta ZP_BASEBANK
-    
-            jsr DOSINIT       ;Setup DOS vectors
+            sta W_FIRST_BANK
+            lda #0            ;No more first run.
+            sta W_FIRST_RUN
+            jmp PC_DO_MENU
+
+
+PC_DO_MENU
             jsr SHOWMENU
 
             lda ZP_RETCODE    ;What was selected?
             cmp #MENU_CODE_BACKUP
             bne @+
             jmp OP_BACKUP
+
 @           cmp #MENU_CODE_LISTING
             bne @+
             jmp OP_LISTING
+
 @           cmp #MENU_CODE_RECORD
             bne @+
             jmp OP_RECORD
-@           jmp PROGRAM_BEGIN           
+
+@           cmp #MENU_CODE_EXIT
+            bne @+
+            jmp COLDSV
+
+@           jmp WARMSV           
 
 ;===============================================================================
 ; Mainline Backup
@@ -1107,7 +1144,7 @@ MDE_TEXT_L equ *-MDE_TEXT
 ; Display message buffer using CIO, channel 0.
 ;-------------------------------------------------------------------------------
 MSG_DISPLAY SUBENTRY
-           lda #9                  ;Requesting PRINT
+           lda #11                  ;Requesting PUTCHAR
            sta CIO0_OP
            lda #<MSG_BUF
            sta CIO0_BUFLO
@@ -1225,8 +1262,14 @@ SM_KEY1     cmp #$15                 ;Is that 'B'?
             jmp SM_DONE
 
 SM_KEY2     cmp #$28                 ;Is that 'R'
-            bne SM_KEY_L
+            bne SM_KEY3
             lda #MENU_CODE_RECORD
+            jmp SM_DONE
+
+SM_KEY3     cmp #92                  ;Is that SHIFT-ESC?
+            bne SM_KEY_L            
+            lda #MENU_CODE_EXIT
+            jmp SM_DONE
 
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
@@ -1918,6 +1961,9 @@ W_DSKIO_CODE dta 0
 W_REC_BANK   dta 0
 W_REC_PTRLO  dta 0
 W_REC_PTRHI  dta 0
+;Miscellaneous
+W_FIRST_RUN  dta $FF
+W_FIRST_BANK dta 0
 ;Duration of the file separator
 W_REC_SEPDURATION dta 10
 ;===============================================================================

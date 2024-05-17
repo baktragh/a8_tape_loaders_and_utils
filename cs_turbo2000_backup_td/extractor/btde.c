@@ -142,7 +142,7 @@ void paintMenu() {
 
 
   /*Title*/
-  printf("  Backup T/D Extractor 0.04\n");
+  printf("  Backup T/D Extractor 0.05\n");
   printf("  (c) 2024 BAKTRA Software\n\n");
 
   /*Menu items*/
@@ -810,10 +810,8 @@ unsigned char normalizeTurboName(char* buffer, unsigned char maxLength) {
 unsigned char retryPrompt(char* message) {
   unsigned char c = ' ';
 
-  puts("");
-  puts(message);
-  puts("  R Retry, A Abort, S Skip");
-
+  printf("\n  %s\n  R Retry, A Abort, S Skip",message);
+  
   while (1) {
     c = cgetc();
     if (c == 'R' || c == 'r') {
