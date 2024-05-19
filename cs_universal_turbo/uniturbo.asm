@@ -3,14 +3,15 @@
 ;==============================================
 
 
-            *= 1183
+            *= 1280
             .INCLUDE "equates.asm"
 
 
-L049F       jsr BOOTINIT        ;Setup DOS vector
+L049F       jsr DOSINIT         ;Setup DOS vector
 
 SHOWTITLE   lda #<TITLE         ;Display title
             ldy #>TITLE
+            ldx #<TITLE_L
             jsr PRINT_LINE
     
 RESTART     jsr BEEP            ;Beep
@@ -39,6 +40,8 @@ L04BA       lda BUFRFL
             asl A
             sta BUFRHI
             sta BFENHI
+            lda #20
+            sta W_NAME_LEN
 
             lda #183            ;First byte if the block should be 183
             jsr DECODE_BLOCK    ;Call subroutine for block decoding
@@ -87,7 +90,9 @@ DISPLAY_ERROR jsr ERROR_MSG    ;Issue error message
 ;Turbo 2000 handling
 ;----------------------------------------------
 
-SET_T2K     lda #145           ;Setup address where T2K header will be placed
+SET_T2K     lda #10
+            sta W_NAME_LEN
+            lda #145           ;Setup address where T2K header will be placed
             sta BFENLO
             lda #128
             sta BUFRLO
@@ -141,6 +146,7 @@ DISPLAY_NAME lda #125
              sta LOMEM
              lda #128
              ldy #0
+             ldx W_NAME_LEN
              jsr PRINT_LINE
              lda #50
 DELAY        adc RTCLOK+2
@@ -150,6 +156,7 @@ DELAY_LOOP   cmp RTCLOK+2
 
 ERROR_MSG   lda #<ERRORTEXT
             ldy #>ERRORTEXT
+            ldx #<ERRORTEXT_L
             jsr PRINT_LINE
             lda LE425
             pha
@@ -157,13 +164,13 @@ ERROR_MSG   lda #<ERRORTEXT
             pha
             rts
 
-PRINT_LINE  ldx #0		
+PRINT_LINE  stx IOCB0+ICBLL		
             sta IOCB0+ICBAL
             sty IOCB0+ICBAH
             lda #9
             sta IOCB0+ICCOM
-            lda #255
-            sta IOCB0+ICBLL
+            ldx #0
+            stx IOCB0+ICBLH
             jmp CIOV
 
 ;==============================================
@@ -348,25 +355,20 @@ L06B4       clc
 ;-----------------------------------------------
 ;Strings
 ;-----------------------------------------------
-TITLE	    .byte "UT",155
-ERRORTEXT   .byte "BOOT ERROR",155
-
+TITLE	    .byte "Universal Turbo"
+TITLE_L      =*-TITLE
+ERRORTEXT   .byte "BOOT ERROR"
+ERRORTEXT_L  =*-ERRORTEXT_L
+W_NAME_LEN  .byte 0
 ;-----------------------------------------------
 ;Initialization of DOS vectors
 ;-----------------------------------------------
-BOOTINIT    lda #<DINI
-            sta DOSINI
-            lda #>DINI
-            sta DOSINI+1
-            lda #0
-            sta COLDST
-            lda #1
-            sta BOOT
-            jsr WARMSV
-            
-DINI        lda #<SHOWTITLE
-            sta DOSVEC
-            lda #>SHOWTITLE
-            sta DOSVEC+1
-            clc
-            rts
+DOSINIT     ldx #<SHOWTITLE
+            stx DOSINI
+            ldx #>SHOWTITLE
+            stx DOSINI+1
+            ldx #1
+            stx BOOT
+            dex
+            stx COLDST
+            rts 

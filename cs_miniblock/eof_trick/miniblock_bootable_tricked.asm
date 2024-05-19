@@ -21,9 +21,9 @@
 ;----------------------------------------------
 ;Block to be loaded
 ;----------------------------------------------
-BLOCK_FIRST=1183               ;First address
-BLOCK_LAST=1183+585-1          ;Last address
-BLOCK_RUN=1183                 ;RUN address
+BLOCK_FIRST=1280              ;First address
+BLOCK_LAST=1280+602-1         ;Last address
+BLOCK_RUN=1280                ;RUN address
 
 ;-----------------------------------------------
 ; Boot header
@@ -54,7 +54,7 @@ L05D2       lda #<[BLOCK_FIRST]  ;Setting up buffer for single block loading
             lda #>[BLOCK_LAST+1]
             sta BFENHI
 
-            lda #255           ;First byte in the block should be 255
+            lda #128           ;First byte in the block should be 128
             jsr L0631          ;Call block decoding subroutine
 
             bcs L0622          ;If there was no error, jump to RUN
