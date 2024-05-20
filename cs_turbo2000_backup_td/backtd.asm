@@ -1,10 +1,9 @@
 ;*******************************************************************************
-;TURGEN - BACKUP T/D (C) 2024 BAKTRA Software
+;TURGEN - BACKUP T/D Utility Disk (C) 2024 BAKTRA Software
 ;Mainline code. Assemble with MADS.
 ;
-;This utility automatically copies Czechoslovak Turbo 2000 files to a raw disk
-;format. The raw disk format is then processed by the TURGEN utility, to
-;create binary load files or TSFXes.
+;This utility disk automatically copies Czechoslovak Turbo 2000 files to disk
+;without a file system. The files can be extracted by the BACKUP T/D Extractor. 
 ;
 ;Minimum of 128 KB of total RAM is required, because the turbo block is loaded
 ;into the banks of the extended memory. This allows to process files that
@@ -1360,7 +1359,7 @@ SM_KEY3     cmp #92                  ;Is that SHIFT-ESC?
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 0.10'
+SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 1.00'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2

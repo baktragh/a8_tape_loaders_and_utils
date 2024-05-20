@@ -1,20 +1,28 @@
-# Backup T/D
+# BACKUP T/D
 
 ## About
 
-Backup T/D is a Turbo 2000 tape preservation toolkit for 8-bit Atari computers.
+BACKUP T/D is a Turbo 2000 tape preservation toolkit for 8-bit Atari computers.
+
+### How BACKUP T/D Works
+
+For tape preservation, the toolkit allows you to use the most efficient means:
+1. Your data recorder with Turbo 2000 upgrade to read and record tapes. There is no better device than the data recorder.
+2. Floppy disk drive replacement/emulator to store the preserved data
+3. Computer emulator to extract the preserved data for further processing
+4. Extended memory of your Atari computer to allow 64 KB buffer for data
 
 ## Components
 The toolkit consists of two components:
 
-1. Backup T/D utility disk
-2. Backup T/D extractor 
+1. BACKUP T/D utility disk
+2. BACKUP T/D extractor 
 
-## Backup T/D Utility Disk
+## BACKUP T/D Utility Disk
 
 ### Overview
 
-The utility disk is a special, large bootable disk without a filesystem.
+The utility disk is a special, large bootable disk without a file system.
 The disk provides the following functions:
 
 1. List files present on the utility disk.
@@ -41,7 +49,7 @@ The disk provides the following functions:
 * Do not press RESET until a full tape side is backed up
 * To exit the utility disk, you can press SHIFT+ESC. This will result in cold start.
 
-## Backup T/D Extractor
+## BACKUP T/D Extractor
 
 The extractor can extract files from the previously populated utility disk. The extractor is a binary load file
 that can run under Atari DOS 2 or similar disk operating systems.
@@ -66,7 +74,7 @@ The extractor provides the following functions:
 * The Turbo 2000 file names can be up to 10 characters long, while disk file names are limited to 8 characters (except the H: devices, where the file names can be much longer).
 * To prevent unwanted file overwrites caused by duplicate file names, use the "Sequential naming" option. The option adds a three-digit prefix to file names extracted to a H: device, or sets a numbered file name extension for other devices.
 
-## How to Backup a Full Tape Side and then Extract the files
+## How to Backup a Full Tape Side and then Extract the Files
 
 ### Backup
 1. Create a working copy of the BACKUP T/D Utility disk image
@@ -83,6 +91,6 @@ The extractor provides the following functions:
 1. Configure the emulator, so that the virtual hard drive device H1: is available. Ensure the H1: device is in read/write mode and supports long file names.
 2. Have the emulator launch the BACKUP T/D Extractor binary load file
 3. Insert the previously used disk image to emulated drive #1
-4. On the main menu, select the "List files on Backup T/D disk" to verify the contents of the disk image
+4. On the main menu, select the "List files on BACKUP T/D disk" to verify the contents of the disk image
 5. Verify that H1 is selected as the target device.
 6. On the main menu, select the "Extract files from disk" function to extract the files to the virtual hard drive.
