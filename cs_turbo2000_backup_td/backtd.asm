@@ -29,7 +29,7 @@
 ; with pure data follow. The number of sectors can be calculated using the
 ; length field.
 ;
-; End of filesystem marker
+; End of filesystem marker/Non-commited header.
 ; The sector begins with 'E'
 ;*******************************************************************************
             ICL 'asminc/equates.asm'
@@ -313,12 +313,20 @@ L0622       jsr RESET_POKEY
             jsr DISPLAY_WRITING_TO_DISK   ;Display message
             jsr WRITE_CLRBUF
 
+            lda ZP_D_SECLO                ;Remember sector number for commit
+            sta W_WRITE_LASTH_SECLO
+            lda ZP_D_SECHI
+            sta W_WRITE_LASTH_SECHI
+
 ;Reset the MAXRC
             lda #0
             sta ZP_W_MAXRC           
 
-;Write byte indicating 'H' as header
-            lda #'H'
+;Write byte indicating 'E' as header of unfinished file. The 'E' value
+;will be changed to 'H' during write commit. If the writing fails, this will
+;become end of filesystem indicator.
+
+            lda #'E'
             jsr WRITE_BYTE
 ;Write word indicating length of the header (17 bytes)
             lda #<THEADER_LEN
@@ -400,7 +408,11 @@ WD_DONEINC
             lda #'E'
             sta SEC_BUFFER
             jsr WRITE_FORCE
-            UPDATERC  
+            UPDATERC
+
+;Commit
+            jsr WRITE_COMMIT;
+            UPDATERC
 
 ;Display message
             lda ZP_W_MAXRC
@@ -843,7 +855,81 @@ WRITE_CLRBUF SUBENTRY
 @           sta SEC_BUFFER-1,X
             dex
             bne @-
-            SUBEXIT 
+            SUBEXIT
+;-------------------------------------------------------------------------------
+; Commit write
+; Read the recent header sector, change its type to 'H'
+;-------------------------------------------------------------------------------
+WRITE_COMMIT SUBENTRY
+;Read the sector with header
+            lda #0
+            sta ZP_RETCODE
+
+            lda #1
+            sta DUNIT 
+            lda W_WRITE_LASTH_SECLO
+            sta DAUX1     
+            lda W_WRITE_LASTH_SECHI
+            sta DAUX2
+            lda #$52     ; Read sector
+            sta DCOMND
+            lda #>SEC_BUFFER
+            sta DBUFHI  
+            lda #<SEC_BUFFER 
+            sta DBUFLO
+            jsr DSKINV
+
+            lda DSTATS                ;Check the status
+            sta W_DSKIO_CODE          ;Keep for later
+            cmp #1                    ;Is status OK (==1)?
+            bne WC_BAD                ;No, return 8
+
+;Check the sector buffer for 'E', change to 'H'
+            lda SEC_BUFFER
+            cmp #'E'
+            bne WC_BAD
+            lda #'H'
+            sta SEC_BUFFER
+ 
+;Write the sector back.
+            lda #0
+            sta ZP_RETCODE
+
+            lda #1
+            sta DUNIT 
+            lda W_WRITE_LASTH_SECLO
+            sta DAUX1     
+            lda W_WRITE_LASTH_SECHI
+            sta DAUX2
+            lda #$57     ; Put sector, with verification
+            sta DCOMND
+            lda #>SEC_BUFFER
+            sta DBUFHI  
+            lda #<SEC_BUFFER 
+            sta DBUFLO
+            jsr DSKINV
+
+            lda DSTATS                ;Check the status
+            sta W_DSKIO_CODE          ;Keep for later
+            cmp #1                    ;Is status OK (==1)?
+            bne WC_BAD              ;No, return 8
+
+WC_DONE     SUBEXIT
+
+WC_BAD      lda #8                    ;Set RC=8
+            sta ZP_RETCODE
+              
+            lda W_WRITE_LASTH_SECLO
+            sta ZP_D_SECLO
+            lda W_WRITE_LASTH_SECHI
+            sta ZP_D_SECHI        
+            lda #0
+            sta ZP_D_BUFPTR     
+
+            jsr MSG_DISK_ERROR
+            jmp WC_DONE          
+
+ 
 ;===============================================================================
 ; Display messages
 ;===============================================================================
@@ -1274,7 +1360,7 @@ SM_KEY3     cmp #92                  ;Is that SHIFT-ESC?
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 0.09'
+SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 0.10'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -1958,14 +2044,21 @@ THEADER_LEN EQU *-THEADER
 
 ;Disk operation error code backup
 W_DSKIO_CODE dta 0
+
+;Turbo data recording
 W_REC_BANK   dta 0
 W_REC_PTRLO  dta 0
 W_REC_PTRHI  dta 0
+W_REC_SEPDURATION dta 10
+
 ;Miscellaneous
 W_FIRST_RUN  dta $FF
 W_FIRST_BANK dta 0
-;Duration of the file separator
-W_REC_SEPDURATION dta 10
+
+;Writing data to disk
+W_WRITE_LASTH_SECLO dta 0
+W_WRITE_LASTH_SECHI dta 0
+ 
 ;===============================================================================
 ; Filler
 ;===============================================================================
