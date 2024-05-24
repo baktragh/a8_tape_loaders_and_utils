@@ -14,11 +14,10 @@
                 VBI_VCOUNT      = 124
                 
                 ZP_BLOCKFLAG    = 130
-                ZP_ID_BYTE      = 131
                 CIOCHR          = $2F
 
-                BLIZZARD_PILOT_LONG = $80
-                BLIZZARD_GAP_LONG =   $08
+                BLIZZARD_BLOCK_SYNC = $80
+                BLIZZARD_BLOCK_HEADER = $40
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -64,6 +63,12 @@ CFG_FLAGS  .BYTE  0
            CFG_F_ALARM     = $20       ;Alarm after saving
 CFG_SEP_DURATION .BYTE (3*45)
 ;------------------------------------------------------------------------
+; Silence configuration
+;------------------------------------------------------------------------
+CFG_S_BEFORE_SYNC  .BYTE $88
+CFG_S_AFTER_SYNC   .BYTE $88
+CFG_S_AFTER_HEADER .BYTE $88
+;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
 ENTRY_ADDR         jsr WAIT_FOR_VBLANK
@@ -102,13 +107,15 @@ SKIP_START         jsr BEEP
                    jsr RECENV_INIT
                    lda #52
                    sta PACTL
-
-                   bit CFG_FLAGS          ;Check if long sep requested
+                   
+                   bit CFG_FLAGS           ;Is this composite ? ($80)
+                   bpl SAVE_LOOP           ;No, skip initial delay
+   
+                   ldy #5                 ;Presume normal separation (0.1)
+                   bit CFG_FLAGS          ;Check if long sep requested ($40)
                    bvc NORM_SEP           ;No, skip to normal sep
-  
                    ldy CFG_SEP_DURATION   ;Long sep
-                   jsr DELAY_CUSTOM_Y     ;Make long sep
-NORM_SEP           jsr DELAY_SHORT        ;Make short sep
+NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make long sep
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
@@ -133,21 +140,25 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    cmp #$FF
                    beq SAVE_TERM
     
-SAVE_DOBLOCK       ldy #0                       ;Get ID byte
-                   lda (BUFRLO),Y
-                   sta ZP_ID_BYTE
+SAVE_DOBLOCK       
+;Add gap before the block
+                  jsr DELAY_BLOCK_BEFORE
+
+;Write the block  
                    
                    jsr WRITE_BLOCK
 
-                   clc                          ;Increment table pointer
+;Continue to the next block
+
+                   clc                          
                    lda #5
                    adc ZP_TAB_PTR_LO
                    sta ZP_TAB_PTR_LO
                    bcc SAVE_CONT
                    inc ZP_TAB_PTR_HI  
 
-;Add some gaps between blocks
-SAVE_CONT          jsr DELAY_BLOCK
+;Add gap after the block
+SAVE_CONT          jsr DELAY_BLOCK_AFTER
 
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
@@ -208,23 +219,60 @@ WFV_1              cmp VCOUNT                  ;Check
 WFV_2              cmp VCOUNT
                    beq WFV_2                   
                    rts             
+
 ;-----------------------------------------------------------------------
-; Short delay
+; Delay after block
 ;-----------------------------------------------------------------------                   
-DELAY_SHORT        ldy #5                  ;Short delay, 0.1 sec
-DELAY_CUSTOM_Y     jmp DELAY_WAIT
+DELAY_BLOCK_AFTER  lda ZP_BLOCKFLAG            ;Check block type
+                   beq DBA_NORM                ;Ordinary block, norm. delay
 
-DELAY_BLOCK        ldy #10                 ;Default is 0.2 sec
-                   lda ZP_BLOCKFLAG        ;Check block flag
-                   and #BLIZZARD_GAP_LONG  ;Is it elongated?
-                   beq DELAY_WAIT          ;No, stick to default
-                   ldy #250                ;Yes, set to 5 seconds
+                   and #BLIZZARD_BLOCK_SYNC    ;Is that sync block?
+                   beq @+                      ;No, skip
+                   ldy CFG_S_AFTER_SYNC        ;Yes, load # of tenths
+                   jmp DBA_WAIT
 
-DELAY_WAIT         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
-                   dey                     ;Decrement counter
-                   bne DELAY_WAIT          ;Repeat until not zero
+@                  lda ZP_BLOCKFLAG            ;Check again
+                   and #BLIZZARD_BLOCK_HEADER  ;Is that header block?
+                   beq @+                      ;No, skip
+                   ldy CFG_S_AFTER_HEADER      ;Yes, load # of tenths 
+                   jmp DBA_WAIT 
+@
+DBA_NORM           ldy #2
+DBA_WAIT           jsr DELAY_TENTHS
+                   rts
+;-----------------------------------------------------------------------
+; Delay before block
+;-----------------------------------------------------------------------                   
+DELAY_BLOCK_BEFORE lda ZP_BLOCKFLAG            ;Check block type
+                   beq DBB_END
+
+                   and #BLIZZARD_BLOCK_SYNC    ;Is that sync block?
+                   beq DBB_END                 ;No, skip
+                   ldy CFG_S_BEFORE_SYNC       ;Yes, load # of tenths
+
+DBB_WAIT           jsr DELAY_TENTHS
+DBB_END            rts
+;-----------------------------------------------------------------------
+; Delay atoms
+;-----------------------------------------------------------------------
+DELAY_TENTHS       jsr DELAY_TENTH
+                   dey
+                   bne DELAY_TENTHS
+                   rts
+
+DELAY_TENTH        ldx #5
+@                  jsr DELAY_TICK
+                   dex 
+                   bne @-
+                   rts
+
+DELAY_TICK         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
 DELAY_END          rts
 
+DELAY_CUSTOM_Y     jsr WAIT_FOR_VBLANK
+                   dey
+                   bne DELAY_CUSTOM_Y
+                   rts
 ;=======================================================================
 ; Write block of data, turbo blizzard
 ; BUFRLO,BUFRHI - BFENHO,BFENHI - Buffer Range
@@ -236,8 +284,8 @@ j0DAB             JSR DO_BUFFER_SETUP    ;Setup the buffer range
 
 sk466             LDY #$02               ;Presume short pilot
                   LDX #$2E               ;Timing constant
-                  lda ZP_BLOCKFLAG       ;Check longer pilot flag 
-                  and #BLIZZARD_PILOT_LONG  ;Is it present?
+                  lda ZP_BLOCKFLAG       ;Check block flag 
+                  and #BLIZZARD_BLOCK_SYNC  ;Is it SYNC block
                   beq WR_PILOT           ;No, then go with the short pilot
                   ldy #$20               ;Yes, have longer pilot
 WR_PILOT          JSR DO_PILOT
