@@ -68,6 +68,7 @@ CFG_SEP_DURATION .BYTE (3*45)
 CFG_S_BEFORE_SYNC  .BYTE $88
 CFG_S_AFTER_SYNC   .BYTE $88
 CFG_S_AFTER_HEADER .BYTE $88
+CFG_S_AFTER_BLOCK  .BYTE $88
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
@@ -237,7 +238,7 @@ DELAY_BLOCK_AFTER  lda ZP_BLOCKFLAG            ;Check block type
                    ldy CFG_S_AFTER_HEADER      ;Yes, load # of tenths 
                    jmp DBA_WAIT 
 @
-DBA_NORM           ldy #2
+DBA_NORM           ldy CFG_S_AFTER_BLOCK       ;Ordindary block
 DBA_WAIT           jsr DELAY_TENTHS
                    rts
 ;-----------------------------------------------------------------------
