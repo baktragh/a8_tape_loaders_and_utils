@@ -18,6 +18,7 @@
 
                 BLIZZARD_BLOCK_SYNC = $80
                 BLIZZARD_BLOCK_HEADER = $40
+                BLIZZARD_BLOCK_HASINIT = $20
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -236,8 +237,14 @@ DELAY_BLOCK_AFTER  lda ZP_BLOCKFLAG            ;Check block type
                    and #BLIZZARD_BLOCK_HEADER  ;Is that header block?
                    beq @+                      ;No, skip
                    ldy CFG_S_AFTER_HEADER      ;Yes, load # of tenths 
-                   jmp DBA_WAIT 
-@
+                   jmp DBA_WAIT
+ 
+@                  lda ZP_BLOCKFLAG            ;Check again
+                   and #BLIZZARD_BLOCK_HASINIT ;Block with INIT?                  
+                   beq DBA_NORM                ;Nope, just ordinary one
+                   ldy #5                      ;Force 0.5 seconds
+                   bne DBA_WAIT                ;And do it.
+
 DBA_NORM           ldy CFG_S_AFTER_BLOCK       ;Ordindary block
 DBA_WAIT           jsr DELAY_TENTHS
                    rts
