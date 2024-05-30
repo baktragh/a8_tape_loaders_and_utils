@@ -7,7 +7,7 @@
 ;=======================================================================
 ; Private constants
 ;=======================================================================
-                START_ADDR      = 2800
+                START_ADDR      = 2700
 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
@@ -246,8 +246,10 @@ DELAY_BLOCK_AFTER  lda ZP_BLOCKFLAG            ;Check block type
                    bne DBA_WAIT                ;And do it.
 
 DBA_NORM           ldy CFG_S_AFTER_BLOCK       ;Ordindary block
-DBA_WAIT           jsr DELAY_TENTHS
-                   rts
+DBA_WAIT           cpy #0                      ;Is there zero delay?
+                   beq DBA_EXIT                ;Yes, skip it.
+                   jsr DELAY_TENTHS
+DBA_EXIT           rts
 ;-----------------------------------------------------------------------
 ; Delay before block
 ;-----------------------------------------------------------------------                   
@@ -258,7 +260,9 @@ DELAY_BLOCK_BEFORE lda ZP_BLOCKFLAG            ;Check block type
                    beq DBB_END                 ;No, skip
                    ldy CFG_S_BEFORE_SYNC       ;Yes, load # of tenths
 
-DBB_WAIT           jsr DELAY_TENTHS
+DBB_WAIT           cpy #0                      ;Is there zero delay?
+                   beq DBB_END                 ;Yes, skip it.
+                   jsr DELAY_TENTHS
 DBB_END            rts
 ;-----------------------------------------------------------------------
 ; Delay atoms
