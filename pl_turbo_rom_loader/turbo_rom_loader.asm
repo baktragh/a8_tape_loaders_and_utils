@@ -4,9 +4,17 @@
 ;in the area normally occupied by the
 ;international charecter set.
 ;===============================================
-           @HDR = 960       ;Header address - printer buffer           
-.INCLUDE equates.asm 
-            
+.INCLUDE equates.asm
+           @HDR = 960       ;Header address - printer buffer
+           ZP_BUFRLO = $CB         
+           ZP_BUFRHI = $CC 
+           ZP_BFENLO = $CD
+           ZP_BFENHI = $CE
+           ZP_BYTESLO = $CF
+           ZP_BYTESHI = $D0
+
+
+             
 ;
 ; Start of code
 ;
@@ -24,9 +32,17 @@ START       lda #0
 ;----------------------------------------------                        
 RD_HEADER   jsr SET_HDBUF
             jsr READBLOCK    ;Decode block
-            
+
+            lda ZP_BYTESLO   ;Copy number of bytes
+            sta ZP_BFENLO
+            lda ZP_BYTESHI
+            sta ZP_BFENHI
+
             jsr SET_HDBUF    ;Prepare for check sum
-            inc BUFRLO
+
+            inc ZP_BUFRLO    ;Ignore the first byte
+            inc ZP_BYTESLO
+
             jsr CHSUM0       ;Calculate check sum
             cmp @HDR         ;Match? 
             beq DISP_NAME    ;Yes, continue
@@ -55,40 +71,39 @@ RD_DATA     jsr SET_DATABUF  ;Setup buffer for main block
             
 SETINI      jsr READBLOCK    ;Decode block
             jsr SET_DATABUF  ;Setup buffer for main block
-            
+           
             jsr CHSUM0       ;Check sum
             cmp [@HDR+5]        ;Match?
             beq RUNPROG      ;Yes, go to run the progrem
             jmp RD_ERROR     ;No, BOOT ERROR
 
-;----------------------------------------------
+;-------------------------------------------------------------------------------
 ; RUN program
-;----------------------------------------------
+;-------------------------------------------------------------------------------
 RUNPROG     ldx #[RS_END-RUNSKEL] ;Move RUN skeleton
 RP_LOOP     lda  RUNSKEL-1,X        
-            sta  [@HDR+41-1],X
+            sta  [@HDR+61-1],X
             dex
             bne  RP_LOOP
             
-            lda  #<[@HDR+41+[RS_INIT-RUNSKEL]]       ;Prepare INIT
-            sta  [@HDR+41+[RS_INISKEL+1-RUNSKEL]]
-            lda  #>[@HDR+41+[RS_INIT-RUNSKEL]]
-            sta  [@HDR+41+[RS_INISKEL+2-RUNSKEL]]
+            lda  #<[@HDR+61+[RS_INIT-RUNSKEL]]       ;Prepare INIT
+            sta  [@HDR+61+[RS_INISKEL+1-RUNSKEL]]
+            lda  #>[@HDR+61+[RS_INIT-RUNSKEL]]
+            sta  [@HDR+61+[RS_INISKEL+2-RUNSKEL]]
             
             lda  [@HDR+36]             ;Do we have INIT?
             beq  RP_GORUN              ;Yes, so be it
             
-            lda  #<[@HDR+40]           ;No, RTS init  
+            lda  #<[@HDR+61+RS_RTS-RUNSKEL] ;No, RTS init  
             sta  [@HDR+8]
-            lda  #>[@HDR+40]
+            lda  #>[@HDR+61+RS_RTS-RUNSKEL]
             sta  [@HDR+9]
             
-            
-RP_GORUN    jmp  [@HDR+41]             ;Go to the RUN routine
+RP_GORUN    jmp  [@HDR+61]             ;Go to the RUN routine
 
-;----------------------------------------------
+;-------------------------------------------------------------------------------
 ; Run program routine skeleton
-;----------------------------------------------
+;-------------------------------------------------------------------------------
 RUNSKEL     sei              ;Disable interrupts
             lda #[1+2+128+32+16] ;OS ROM enabled, BASIC disabled ST ROM disabled
                                  ;130XE banks in compatibility mode
@@ -96,38 +111,44 @@ RUNSKEL     sei              ;Disable interrupts
             cli              ;Enable interrupts 
 RS_INISKEL  jsr RS_INIT      ;Perform INIT (skeleton)
 RS_RUN      jmp ([@HDR+6])   ;Run program
-RS_INIT     jmp ([@HDR+8])   
+RS_INIT     jmp ([@HDR+8])
+RS_RTS      rts    
 RS_END              
 
-;-----------------------------------------------
+;-------------------------------------------------------------------------------
 ; Header buffer setting 
-; 41 bytes from address @HDR
-;-----------------------------------------------
+; Set address to @HDR and byte counters to zero
+;-------------------------------------------------------------------------------
 SET_HDBUF   lda #<@HDR
-            sta BUFRLO
+            sta ZP_BUFRLO
             lda #>@HDR
-            sta BUFRHI
-            lda #41
-            sta BFENLO
-            lda #0
-            sta BFENHI
-            sta @HDR+41     ;Clear one byte past header
+            sta ZP_BUFRHI
+            jsr RESET_COUNTER
             rts 
-;-----------------------------------------------
+;-------------------------------------------------------------------------------
 ; Data buffer setting
-;-----------------------------------------------
+;-------------------------------------------------------------------------------
 SET_DATABUF lda [@HDR+10]
-            sta BUFRLO
+            sta ZP_BUFRLO
             lda [@HDR+11]
-            sta BUFRHI
+            sta ZP_BUFRHI
             lda [@HDR+12]
-            sta BFENLO
+            sta ZP_BFENLO
             lda [@HDR+13]
-            sta BFENHI
+            sta ZP_BFENHI
+            jsr RESET_COUNTER
             rts
-;==============================================
+;-------------------------------------------------------------------------------
+; Reset counter
+;-------------------------------------------------------------------------------
+RESET_COUNTER
+            lda #0 
+            sta ZP_BYTESLO
+            sta ZP_BYTESHI
+            rts 
+;===============================================================================
 ; Read block of data
-;==============================================
+;===============================================================================
 READBLOCK   lda #1               ; Short pilot tone
             sta ICAX6Z
             jsr RD_PREP          ; Go prepare
@@ -135,32 +156,29 @@ READBLOCK   lda #1               ; Short pilot tone
             jsr GETBYTES         ; Go read bytes, ends with RTS
             jsr RD_TERM
             rts 
-            
-;----------------------------------------------            
+;-------------------------------------------------------------------------------            
 ; Calculate check sum      
-; BUFRLO,BUFRHI - Data start
-; L0CF,L0D0 - Bytes processed
-; BFENLO,BFENHI - Bytes to process, BFENLO has check sum at the end
-;------------------------------------------------------------
-CHSUM0      lda #0               ;Zero length
-            sta D_BYTESLO
-            sta D_BYTESHI
+; ZP_BUFRLO,ZP_BUFRHI   - Data start
+; ZP_BYTESLO,ZP_BYTESHI - Counting bytes
+; ZP_BFENLO,ZP_BFENHI   - Bytes to process, ZP_BFENLO has check sum at the end
+;-------------------------------------------------------------------------------
+CHSUM0      
 CHSUM1      ldy #0               
-            eor (BUFRLO),Y
-            inc BUFRLO
+            eor (ZP_BUFRLO),Y
+            inc ZP_BUFRLO
             bne CHSUM2
-            inc BUFRHI
-CHSUM2      inc D_BYTESLO
+            inc ZP_BUFRHI
+CHSUM2      inc ZP_BYTESLO
             bne CHSUM3
-            inc D_BYTESHI
-CHSUM3      ldy BFENLO
-            cpy D_BYTESLO
+            inc ZP_BYTESHI
+CHSUM3      ldy ZP_BFENLO
+            cpy ZP_BYTESLO
             bne CHSUM1
-            ldy BFENHI
-            cpy D_BYTESHI
+            ldy ZP_BFENHI
+            cpy ZP_BYTESHI
             bne CHSUM1
-            sta BFENLO
-            lda BFENLO
+            sta ZP_BFENLO
+            lda ZP_BFENLO
             rts
 ;---------------------------------------- 
 ;Prepare for reading - motor + interrupts            
@@ -212,13 +230,13 @@ GB_NBIT     pha                   ; Stack work byte
 GB_DELAY    dex
             bne GB_DELAY
             beq GB_NBIT           ; Continue with next bit   
-GB_BTOBUF   sta (BUFRLO),Y         ; Store byte to buffer
-            inc D_BYTESLO             ; Increment length
+GB_BTOBUF   sta (ZP_BUFRLO),Y         ; Store byte to buffer
+            inc ZP_BYTESLO             ; Increment length
             bne GB_BTOBUFLH
-            inc D_BYTESHI
-GB_BTOBUFLH inc BUFRLO             ;Increment buffer pointer
+            inc ZP_BYTESHI
+GB_BTOBUFLH inc ZP_BUFRLO             ;Increment buffer pointer
             bne GB_BTOBUFH
-            inc BUFRHI
+            inc ZP_BUFRHI
 GB_BTOBUFH  bne GB_NBYTE          ;Continue with next byte
 GB_EXIT     rts
 
@@ -251,8 +269,6 @@ GPULSE2     inx
 ;-----------------------------------------------
 ; Data area
 ;-----------------------------------------------
-D_BYTESLO        .BYTE 0
-D_BYTESHI        .BYTE 0
 D_NMISTORE       .BYTE 0
 ;-----------------------------------------------
 ; Load error
