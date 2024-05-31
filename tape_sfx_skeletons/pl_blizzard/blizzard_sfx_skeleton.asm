@@ -297,9 +297,9 @@ j0DAB             JSR DO_BUFFER_SETUP    ;Setup the buffer range
 sk466             LDY #$02               ;Presume short pilot
                   LDX #$2E               ;Timing constant
                   lda ZP_BLOCKFLAG       ;Check block flag 
-                  and #BLIZZARD_BLOCK_SYNC  ;Is it SYNC block
-                  beq WR_PILOT           ;No, then go with the short pilot
-                  ldy #$20               ;Yes, have longer pilot
+                  and #BLIZZARD_BLOCK_SYNC ;Is it SYNC block?
+                  beq WR_PILOT            ;No, then go with the short pilot
+                  ldy #$0D                ;Yes, have longer pilot (1.5 s)
 WR_PILOT          JSR DO_PILOT
 
                   DEC CIOCHR ;$2F
