@@ -94,3 +94,12 @@ The extractor provides the following functions:
 4. On the main menu, select the "List files on BACKUP T/D disk" to verify the contents of the disk image
 5. Verify that H1 is selected as the target device.
 6. On the main menu, select the "Extract files from disk" function to extract the files to the virtual hard drive.
+
+## Changelog
+### Version 1.01
+#### Utility disk
+* Enhancement: Modest pilot tone durations when recording on tape
+* BugFix: After tape load error, backup wasn't able to read other files
+
+#### Extractor 
+* Enhancement: Applying more strict rules for extracted file names. Only letters, digits, and underscores are allowed. 

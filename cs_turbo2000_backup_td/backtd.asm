@@ -195,7 +195,12 @@ VERIFY3_OK
 ;-------------------------------------------------------------------------------
 ; Decode header
 ;-------------------------------------------------------------------------------
-DEC_HEADER  lda #<THEADER     ;Setup address where turbo header will be placed
+DEC_HEADER  lda ZP_BASEBANK   ;Buffer start - base bank, 16384
+            sta ZP_CURRBANK
+            sta ZP_LASTBANK
+            sta PORTB
+
+            lda #<THEADER     ;Setup address where turbo header will be placed
             sta BUFRLO
             lda #>THEADER
             sta BUFRHI
@@ -2025,12 +2030,12 @@ WR_RESET_ALL   ldy #0
 ;===============================================================================
 ; Global static data area
 ;===============================================================================
-               dta c'@CDATA'
+               dta c'@C'
 C_HEXTAB       dta c'0123456789ABCDEF'     
 ;===============================================================================
 ; Data areas
 ;===============================================================================
-               dta c'@WDATA'
+               dta c'@W'
 ;Turbo header buffer
 THEADER
 TH_TYPE     dta 0
