@@ -1359,7 +1359,7 @@ SM_KEY3     cmp #92                  ;Is that SHIFT-ESC?
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 1.00'
+SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 1.01'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -1893,10 +1893,10 @@ WRITE_BLOCK    pha                    ;Keep A in the stack
                lda #192
                sta AUDCTL
                
-               ldx #24                ;Prepare pilot duration for header                 
+               ldx #$19               ;Prepare pilot duration for header                 
                lda ICAX6Z
                beq WR_PILOTLEN        ;If ID zero, skip
-               ldx #28                ;Prepare pilot tone duration for data
+               ldx #$0D               ;Prepare pilot tone duration for data
 WR_PILOTLEN    stx STATUS             ;Keep status
 WR_PILOTL1     dey
                bne WR_PILOTL1         ;Wait

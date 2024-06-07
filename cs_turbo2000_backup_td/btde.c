@@ -142,7 +142,7 @@ void paintMenu() {
 
 
   /*Title*/
-  printf("  BACKUP T/D Extractor 1.00\n");
+  printf("  BACKUP T/D Extractor 1.01\n");
   printf("  (c) 2024 BAKTRA Software\n\n");
 
   /*Menu items*/
@@ -789,12 +789,22 @@ unsigned char normalizeTurboName(char* buffer, unsigned char maxLength) {
   for (i = 0; i < length; i++) {
 
     c = buffer[i];
-    if (c & 0x80)
-      c = c & 0x7F;
-    if (c == ' ')
-      c = '_';
-    if ((c >= 'a' && c <= 'z') || (c >= '!' && c <= '_')) {
+
+    /*Remove inverse*/
+    if (c & 0x80) {
+        c = c & 0x7F;
     }
+
+    /*Spaces are pre-converted to underscores*/  
+    if (c == ' ') {
+        c = '_';
+    }
+
+    /*Letters and numbers are tolerated*/  
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c>='0' && c<='9')) {
+    }
+    
+    /*Others are converted to underscores*/
     else {
       c = '_';
     }
@@ -810,7 +820,7 @@ unsigned char normalizeTurboName(char* buffer, unsigned char maxLength) {
 unsigned char retryPrompt(char* message) {
   unsigned char c = ' ';
 
-  printf("\n  %s\n  R Retry, A Abort, S Skip",message);
+  printf("\n  %s\n  R Retry, A Abort, S Skip\n",message);
   
   while (1) {
     c = cgetc();
