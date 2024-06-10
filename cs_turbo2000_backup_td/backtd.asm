@@ -12,12 +12,12 @@
 ;Disk layout:
 ; The disk is always 8 MB, sector size 128 bytes.
 ; Sector  Description
-; 1..32   Program code and data, not all are used.
-; 33      Eye-catcher sector
-; 34      Pristine indicator. Pristine disk has all $55s in the sector.
+; 1..64   Program code and data, not all are used.
+; 65      Eye-catcher sector
+; 66      Pristine indicator. Pristine disk has all $55s in the sector.
 ;         Non-pristine disk has all $C0s in the sector. This sector is used
 ;         to test if the disk is writable.
-; 35..    Sectors for data.
+; 67..    Sectors for data.
 
 ; Header sector:
 ; Begins with 'H',length, continues with header data. The header always
@@ -46,7 +46,7 @@
             ZP_LASTBANK   EQU 130
             ZP_RETCODE    EQU 131
  
-            SEC_BUFFER    EQU $2000
+            SEC_BUFFER    EQU $3E00
 
             ZP_D_BUFPTR   EQU 132
             ZP_D_SECLO    EQU 133
@@ -65,9 +65,9 @@
             ZP_WK_LO      EQU 144
             ZP_WK_HI      EQU 145  
 
-            SNO_MARKING   EQU 33
-            SNO_PRISTINE  EQU 34
-            SNO_DATA      EQU 35
+            SNO_MARKING   EQU 65
+            SNO_PRISTINE  EQU 66
+            SNO_DATA      EQU 67
 
             VBI_VCOUNT    EQU 124
 
@@ -192,6 +192,13 @@ VERIFY3_OK
             sta SEC_BUFFER
             jsr WRITE_FORCE
 
+            lda ZP_RETCODE     ;Was marker written?
+            beq DEC_HEADER     ;Yes, continue
+
+VERIFY4_BAD
+            jsr DISPLAY_VERIFY4_FAILED
+            jsr DISPLAY_START_OR_RESET
+            jsr WAIT_START
 ;-------------------------------------------------------------------------------
 ; Decode header
 ;-------------------------------------------------------------------------------
@@ -617,7 +624,7 @@ L06FF       rts
 ; Disk operations
 ;===============================================================================
 ;-------------------------------------------------------------------------------
-; Verify the marking sector (nr. 25)
+; Verify the marking sector 
 ;-------------------------------------------------------------------------------
 DISK_VERIFY_EYE
             SUBENTRY
@@ -659,7 +666,7 @@ DVE_BAD2    lda #8                    ;Set RC=8
             jmp DVE_DONE
 
 
-DVE_T_EYE     dta c'TURGEN BACKUP T/D 1.00'
+DVE_T_EYE     dta c'TURGEN BACKUP T/D 1.10'
 DVE_T_EYE_L   equ *-DVE_T_EYE
 ;-------------------------------------------------------------------------------
 ; Verify if the disk is pristine 
@@ -749,12 +756,12 @@ DVW_BAD     lda #8                    ;Set RC=8
 ;===============================================================================
 ;-------------------------------------------------------------------------------
 ;Initialize thr writing system
-;Position to sector 27, buffer offset is zero
+;Position to initial data sector, buffer offset is zero
 ;-------------------------------------------------------------------------------
 WRITE_INIT  SUBENTRY
-            lda #SNO_DATA
+            lda #<SNO_DATA
             sta ZP_D_SECLO
-            lda #0
+            lda #>SNO_DATA
             sta ZP_D_SECHI
             sta ZP_D_BUFPTR
             SUBEXIT
@@ -1129,6 +1136,26 @@ M_VERIFY3_FAILED   dta c'Disk not writable'
 M_VERIFY3_FAILED_L equ *-M_VERIFY3_FAILED
 
 ;-------------------------------------------------------------------------------
+; Display 'Disk not writable'
+;-------------------------------------------------------------------------------
+DISPLAY_VERIFY4_FAILED
+           SUBENTRY
+           jsr MSG_CLR
+           jsr MSG_DISPLAY
+
+           ldx #M_VERIFY4_FAILED_L
+@          lda M_VERIFY4_FAILED-1,X
+           sta MSG_BUF-1,X
+           dex
+           bne @-
+           jsr MSG_DISPLAY
+
+           SUBEXIT
+M_VERIFY4_FAILED   dta c'Unable to write EOF marker'
+M_VERIFY4_FAILED_L equ *-M_VERIFY4_FAILED
+
+
+;-------------------------------------------------------------------------------
 ; Display 'Writing data to disk'
 ;-------------------------------------------------------------------------------
 DISPLAY_WRITING_TO_DISK
@@ -1364,7 +1391,7 @@ SM_KEY3     cmp #92                  ;Is that SHIFT-ESC?
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 1.01'
+SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 1.10'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -2067,6 +2094,6 @@ W_WRITE_LASTH_SECHI dta 0
 ; Filler
 ;===============================================================================
 PROGRAM_END EQU *
-            .REPT 4096-[PROGRAM_END-PROGRAM_START]
+            .REPT 8192-[PROGRAM_END-PROGRAM_START]
             .byte 0
             .ENDR
