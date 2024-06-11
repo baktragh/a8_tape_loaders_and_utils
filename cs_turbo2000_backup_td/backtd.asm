@@ -1364,7 +1364,7 @@ SM_KEY3     cmp #92                  ;Is that SHIFT-ESC?
 SM_DONE     sta ZP_RETCODE 
             SUBEXIT
 
-SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 1.01'
+SM_M_TITLE1   dta 125,c'BACKUP T/D Utility Disk 1.02'
 SM_M_TITLE1_L equ *-SM_M_TITLE1
 SM_M_TITLE2   dta c'(c) 2024 BAKTRA Software'
 SM_M_TITLE2_L equ *-SM_M_TITLE2
@@ -1477,6 +1477,7 @@ OPL_LOOP      jsr DISK_READSECT
               beq OPL_REMSEC_3
               ldy #1
               cmp #128
+              beq OPL_REMSEC_3
               bcc OPL_REMSEC_3
               ldy #2
 

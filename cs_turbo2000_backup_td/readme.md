@@ -103,3 +103,9 @@ The extractor provides the following functions:
 
 #### Extractor 
 * Enhancement: Applying more strict rules for extracted file names. Only letters, digits, and underscores are allowed. 
+
+### Version 1.02
+#### Utility disk
+* BugFix: Listing of files failed, when file size is a multiple of 128 minus 3.
+
+ 
