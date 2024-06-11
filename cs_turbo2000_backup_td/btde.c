@@ -18,9 +18,9 @@ unsigned char cConfirmEachExtraction;
 
 unsigned char sectorBuffer[128];
 
-#define SNO_MARKING 33
-#define SNO_PRISTINE 34
-#define SNO_DATA 35
+#define SNO_MARKING 65
+#define SNO_PRISTINE 66
+#define SNO_DATA 67
 
 #define RC_OK 0
 #define RC_ERROR 8
@@ -142,7 +142,7 @@ void paintMenu() {
 
 
   /*Title*/
-  printf("  BACKUP T/D Extractor 1.01\n");
+  printf("  BACKUP T/D Extractor 1.1.0\n");
   printf("  (c) 2024 BAKTRA Software\n\n");
 
   /*Menu items*/
@@ -747,8 +747,9 @@ unsigned char verifyDisk(unsigned char unitNumber) {
   }
 
   /*Check for the marking*/
-  if (memcmp("TURGEN BACKUP T/D 1.00", &sectorBuffer, 22) != 0) {
-    puts("  Not a BACKUP T/D disk. Press any key.");
+  if (memcmp("TURGEN BACKUP T/D 1.1.0", &sectorBuffer, 22) != 0) {
+    puts("  Not BACKUP T/D 1.1.0 compatible disk.");
+    puts("  Press any key.");
     cgetc();
     return RC_ERROR;
   }

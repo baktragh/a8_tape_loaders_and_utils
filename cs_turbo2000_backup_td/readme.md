@@ -96,6 +96,22 @@ The extractor provides the following functions:
 6. On the main menu, select the "Extract files from disk" function to extract the files to the virtual hard drive.
 
 ## Changelog
+
+### Version 1.1.0
+#### Utility disk
+* Enhancement: Another 4 KB more space for program code
+* Bugfix: The START or RESET prompt was not displayed after EOF marker write failure
+
+#### Extractor 
+* Enhancement: Support utility disks of 1.1.0
+ 
+#### Common
+* The utility disk and extractor are *not compatible* with previous versions.
+
+### Version 1.02
+#### Utility disk
+* BugFix: Listing of files failed, when file size is a multiple of 128 minus 3.
+
 ### Version 1.01
 #### Utility disk
 * Enhancement: Modest pilot tone durations when recording on tape
@@ -103,9 +119,3 @@ The extractor provides the following functions:
 
 #### Extractor 
 * Enhancement: Applying more strict rules for extracted file names. Only letters, digits, and underscores are allowed. 
-
-### Version 1.02
-#### Utility disk
-* BugFix: Listing of files failed, when file size is a multiple of 128 minus 3.
-
- 
