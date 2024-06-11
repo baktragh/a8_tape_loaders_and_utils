@@ -97,16 +97,20 @@ The extractor provides the following functions:
 
 ## Changelog
 
-### Version 1.10
+### Version 1.1.0
 #### Utility disk
 * Enhancement: Another 4 KB more space for program code
 * Bugfix: The START or RESET prompt was not displayed after EOF marker write failure
 
 #### Extractor 
-* Enhancement: Support utility disks of 1.10
+* Enhancement: Support utility disks of 1.1.0
  
 #### Common
-* The utility disk and extractor are not compatible with previous versions.
+* The utility disk and extractor are *not compatible* with previous versions.
+
+### Version 1.02
+#### Utility disk
+* BugFix: Listing of files failed, when file size is a multiple of 128 minus 3.
 
 ### Version 1.01
 #### Utility disk
