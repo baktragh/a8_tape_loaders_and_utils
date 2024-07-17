@@ -17,6 +17,8 @@
                 ZP_BLOCKFLAG    = 130
                 CIOCHR          = $2F
                 DMACTL          = $D400
+                TROM_BLOCK_HEADER = $80;
+                TROM_BLOCK_DATA   = $40;
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -180,7 +182,7 @@ WFS_DONE           rts
 ;-----------------------------------------------------------------------
 ; Beep
 ;-----------------------------------------------------------------------                   
-BEEP 	           lda #0
+BEEP               lda #0                   
                    sta AUDCTL
                    lda #$AF
                    sta AUDC1
@@ -222,8 +224,23 @@ DELAY_END          rts
 ; $CD,$CE - Number of bytes to write 
 ; $CF,$D0 - Byte counter
 ; BUFRLO,BUFRHI,BFENLO,BFENHI - Counters
+; CIOCHR - Pilot tone duration
 ;=======================================================================
-WRITE_BLOCK        lda BUFRLO  ;Set buffer pointer
+WRITE_BLOCK        ldx #$0C          ;Presume default pilot tone duration
+                   lda ZP_BLOCKFLAG  ;Check block flag
+                   and #TROM_BLOCK_HEADER  ;Is that header?
+                   beq WB_PILOT_01         ;No, try other
+                   ldx #$14                ;Otherwise set long duration
+                   bne WB_PILOT_02         ;And skip
+
+WB_PILOT_01        lda ZP_BLOCKFLAG        ;Check block flag again
+                   and #TROM_BLOCK_DATA    ;Is that data block?
+                   beq WB_PILOT_02         ;No, just skip
+                   ldx #$06                ;Set short duration
+WB_PILOT_02        stx CIOCHR      
+                   
+
+                   lda BUFRLO  ;Set buffer pointer
                    sta $CB
                    lda BUFRHI
                    sta $CC
@@ -337,7 +354,7 @@ LA218   STX AUDF3
 ; Terminate recording environment
 ;-------------------------------------------------------------------------------               
 RECENV_TERM
-        LDA #$FF
+        LDA #$40
         STA NMIEN
         CLI
 ;       LDA #$3C
