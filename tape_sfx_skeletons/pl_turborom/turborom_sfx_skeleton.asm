@@ -1,5 +1,5 @@
 ;=======================================================================
-; Turbo ROM TSFX Skeleton (AST,ATT,UM)  
+; Turbo ROM TSFX Skeleton  
 ; Assemble with the MADS assembler
 ;=======================================================================
            
@@ -17,8 +17,8 @@
                 ZP_BLOCKFLAG    = 130
                 CIOCHR          = $2F
                 DMACTL          = $D400
-                TROM_BLOCK_HEADER = $80;
-                TROM_BLOCK_DATA   = $40;
+                TROM_BLOCK_HEADER = $80
+                TROM_BLOCK_DATA   = $40
 ;=======================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -273,7 +273,7 @@ LA190   DEY
         BNE LA190
         STX $CF                      ;Reset byte counter to zero
         STX $D0
-LA19A   LDY CIOCHR                   ;Write pilot tone
+LA19A   LDY CIOCHR                   ;Write pilot tone, CIOCHR=duration
         STY BUFRHI
         STY BFENLO
         LDA #$84
@@ -330,15 +330,15 @@ LA1EB   LDA $CF                       ;Check if all bytes written
         LDA #$01
 LA1FD   STA AUDF4
         LDX #$29
-        JSR LA20A
-LA202   DEC BUFRHI
+LA202   JSR LA20A
+        DEC BUFRHI
         BNE LA202
         RTS
 
 LA20A   LDY #$34                      ;Write one pulse
         JSR LA211
         LDY #$3C
-LA211   LDA #$04
+LA211   LDA #$04                      ;Delay until INTR triggers
 LA213   BIT IRQST
         BNE LA213
 LA218   STX AUDF3
