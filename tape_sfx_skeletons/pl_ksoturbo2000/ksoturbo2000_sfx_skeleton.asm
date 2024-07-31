@@ -63,6 +63,7 @@ CFG_FLAGS  .BYTE  0
            CFG_F_LONGSEP   = $40       ;Long gap
            CFG_F_ALARM     = $20       ;Alarm after saving
 CFG_SEP_DURATION .BYTE (3*45)
+CFG_SAFETY_DELAY .BYTE 5               ;Safety delay (VBLs)
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
@@ -110,7 +111,9 @@ SKIP_START         jsr BEEP
   
                    ldy CFG_SEP_DURATION  ;Long sep duration
                    jsr DELAY_CUSTOM_Y    ;Make long sep
-NORM_SEP           jsr DELAY_SHORT       ;Otherwise just short sep 
+
+NORM_SEP           ldy CFG_SAFETY_DELAY  ;Safety delay duration
+                   jsr DELAY_CUSTOM_Y    ;Make safety delay 
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
