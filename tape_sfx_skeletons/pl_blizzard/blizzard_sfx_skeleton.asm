@@ -63,6 +63,7 @@ CFG_FLAGS  .BYTE  0
            CFG_F_LONGSEP   = $40       ;Long separator
            CFG_F_ALARM     = $20       ;Alarm after saving
 CFG_SEP_DURATION .BYTE (3*45)
+CFG_SAFETY_DELAY .BYTE 5               ;Safety delay (VBLs)
 ;------------------------------------------------------------------------
 ; Silence configuration
 ;------------------------------------------------------------------------
@@ -110,14 +111,11 @@ SKIP_START         jsr BEEP
                    lda #52
                    sta PACTL
                    
-                   bit CFG_FLAGS           ;Is this composite ? ($80)
-                   bpl SAVE_LOOP           ;No, skip initial delay
-   
-                   ldy #5                 ;Presume normal separation (0.1)
-                   bit CFG_FLAGS          ;Check if long sep requested ($40)
-                   bvc NORM_SEP           ;No, skip to normal sep
-                   ldy CFG_SEP_DURATION   ;Long sep
-NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make long sep
+                   ldy CFG_SAFETY_DELAY   ;Presume just safety delay
+                   bit CFG_FLAGS          ;Check if long separator requested
+                   bvc NORM_SEP           ;No, stick with safety delay
+                   ldy CFG_SEP_DURATION   ;Use delay for long separator
+NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y

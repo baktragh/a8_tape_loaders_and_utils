@@ -106,14 +106,11 @@ SKIP_START         jsr BEEP
                    sta PACTL
 .ENDIF
 
-                   bit CFG_FLAGS          ;Check if long sep requested (0x80)
-                   bvc NORM_SEP           ;No, skip to sep
-  
-                   ldy CFG_SEP_DURATION  ;Long sep duration
-                   jsr DELAY_CUSTOM_Y    ;Make long sep
-
-NORM_SEP           ldy CFG_SAFETY_DELAY  ;Safety delay duration
-                   jsr DELAY_CUSTOM_Y    ;Make safety delay 
+                   ldy CFG_SAFETY_DELAY   ;Presume just safety delay
+                   bit CFG_FLAGS          ;Check if long separator requested
+                   bvc NORM_SEP           ;No, stick with safety delay
+                   ldy CFG_SEP_DURATION   ;Use delay for long separator
+NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y

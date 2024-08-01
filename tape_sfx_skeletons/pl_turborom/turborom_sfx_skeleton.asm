@@ -104,13 +104,11 @@ SKIP_START         jsr BEEP
                    lda #52
                    sta PACTL
 
-                   bit CFG_FLAGS          ;Check if long sep requested
-                   bvc NORM_SEP           ;No, skip to normal sep
-  
-                   ldy CFG_SEP_DURATION   ;Long sep
-                   jsr DELAY_CUSTOM_Y     ;Make long sep
-NORM_SEP           ldy CFG_SAFETY_DELAY   ;Safety delay
-                   jsr DELAY_CUSTOM_Y     ;Make safety delay
+                   ldy CFG_SAFETY_DELAY   ;Presume just safety delay
+                   bit CFG_FLAGS          ;Check if long separator requested
+                   bvc NORM_SEP           ;No, stick with safety delay
+                   ldy CFG_SEP_DURATION   ;Use delay for long separator
+NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-----------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y

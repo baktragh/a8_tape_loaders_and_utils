@@ -68,6 +68,7 @@ CFG_FLAGS  .BYTE  0
            CFG_F_LONGSEP   = $40       ;Long separator
            CFG_F_ALARM     = $20       ;Alarm after saving
 CFG_SEP_DURATION .BYTE (3*50)
+CFG_SAFETY_DELAY .BYTE 5
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
@@ -105,12 +106,12 @@ SKIP_START         jsr BEEP
                    lda #52
                    sta PACTL
 
+                   ldy CFG_SAFETY_DELAY   ;Presume just safety delay
                    bit CFG_FLAGS          ;Check if long separator requested
-                   bvc NORM_SEP           ;No, skip to normal delay
-  
-                   ldy CFG_SEP_DURATION   ;Long separator
-                   jsr DELAY_CUSTOM_Y     ;Make long separator
-NORM_SEP           jsr DELAY_SHORT        ;Make normal separator
+                   bvc NORM_SEP           ;No, stick with safety delay
+                   ldy CFG_SEP_DURATION   ;Use delay for long separator
+NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
+;-------------------------------------------------------------------------------
                    jsr TAPE_INIT_POKEY
 ;-------------------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
