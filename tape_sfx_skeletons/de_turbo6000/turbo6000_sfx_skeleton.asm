@@ -226,26 +226,28 @@ DELAY_END          rts
 ;=======================================================================
 ; Write block of data
 ; Inputs:
-; $32,$33 - Buffer start
-; $34,$35 - Buffer end
+; $32,$33 - Buffer start (BUFRLO,BUFRHI)
+; $34,$35 - Buffer end (BFENLI,BFENHI)
 ; $3E     - Duration of the pilot tone (1 unit=256 pulses)
 ;
 ; Work bytes
 ; $2F     - Currently written byte
 ; $31     - Checksum
+; $30     - Output bit ($80 or $00)
 ;
 ; Pulses are written by altering BREAK on SKCTL
 ;
 ; Special notes
 ; - Buffer range adjustment is needed
 ; - Checksum is calculated, but since it is embedded in the block,
-;   zero is written instead as a padding byte,
+;   zero is written instead as a padding/safety byte,
 ; - The ID  byte is taken from the beginning of the block 
 ;=======================================================================
 WRITE_BLOCK               
-;Correct the buffer range
+;Correct the buffer range for T6000
 ; - The table entry points to the ID byte, we need it to point past the ID byte
-; - The buffer end must be incremented by 1
+; - The buffer end must be incremented by 1, because the table entry points
+;   to one byte earlier
 
                    inc BUFRLO          ;Increment LO by 1
                    bne @+              ;If not zeroed, skip
@@ -257,31 +259,31 @@ WRITE_BLOCK
 @
 
 ;Set pilot tone duration
-                   LDX #$05               ;Pilot tone 5*256 pulses
+                   LDX #$05            ;Pilot tone 5*256 pulses
                    STX $3E
 ;Output pilot tone
-                   JSR MAA0               ;Write pilot tone
+                   JSR MAA0            ;Write pilot tone
                    lda ZP_ID_BYTE      ;Identification byte
-                   JSR MAC3               ;Write identification byte
+                   JSR MAC3            ;Write identification byte
                    STY $31               
                    LDX #$07            ;Set delay
                    NOP
 ;
-MA5E               LDA ($32),Y               ;Get byte to write
-                   JSR MAC3               ;Write byte
-                   LDX #$03               ;Delay
-                   INC $32               ;Increment buffer pointer (LO)
+MA5E               LDA ($32),Y         ;Get byte to write
+                   JSR MAC3            ;Write byte
+                   LDX #$03            ;Delay
+                   INC $32             ;Increment buffer pointer (LO)
                    BNE MA6D            ;Not overflow, skip
                    INC $33             ;Increment buffer pointer (HI)
-                   DEX               ;Delay compensation               
+                   DEX                 ;Delay compensation               
                    DEX                 ;Delay compensation
 
-MA6D               LDA $32               ;Check EOF
+MA6D               LDA $32             ;Check EOF
                    CMP $34             ;Check if BURLO,HI == BFENLO,HI
                    LDA $33
                    SBC $35
                    BCC MA5E            ;Not EOF, continue loop
-                   NOP               ;EOF reached                
+                   NOP                 ;EOF reached                
 ;
 MA78               LDA #0              ;Take the checksum ;Was LDA $31
                    JSR MAC3            ;Write padding byte
@@ -292,59 +294,59 @@ MA78               LDA #0              ;Take the checksum ;Was LDA $31
 ;Pilot tone begins with sequence of $02s
 ;And ends with $09,$08,$07...
 MAA0               NOP                
-                   LDY #$00               ; Clear error flag
-                   STY $30                
-MAA5               LDA #$02               ; Ready value $02
+                   LDY #$00            ; Clear error flag
+                   STY $30               
+MAA5               LDA #$02            ; Ready value $02
                    JSR MAC3            ; Do write byte
-                   LDX #$07               ; Set delay
+                   LDX #$07            ; Set delay
                    DEY                 ; Decrement Y
                    CPY #$09            ; Did Y reach $09
                    BNE MAA5            ; No, keep outputting $02s
 
-                   LDX #$05               ; Set delay
+                   LDX #$05            ; Set delay
                    DEC $3E             ; Decrement pilot tone unit counter
                    BNE MAA5            ; If not all units written, repeat
 
 ;When enough $02 written, write the pilot tone end sequence
-MAB7               TYA               ; #$09-->A
-               JSR MAC3               ; Do write byte
-               LDX #$07            ; Set delay
-               DEY                 ; Decrement Y ($09,$08,...)
-               BNE MAB7            ; If not zero, continue sequence
-               DEX               ; Timing correction               
-               DEX                 ; 
-               RTS                 ; Done with pilot tone
+MAB7               TYA                 ; #$09-->A
+                   JSR MAC3            ; Do write byte
+                   LDX #$07            ; Set delay
+                   DEY                 ; Decrement Y ($09,$08,...)
+                   BNE MAB7            ; If not zero, continue sequence
+                   DEX                 ; Timing correction               
+                   DEX                    
+                   RTS                 ; Done with pilot tone
 
 ;Write one byte (the byte is in A)
-MAC3               STA $2F               ; Store A to working byte
-               EOR $31               ; Update check sum
-               STA $31             ; Write checksum back
-               LDA #$08               ; Set bit counter to 8
-               STA $01             ; Store bit counter
-MACD           ASL $2F               ; Shift with carry ;Was ASL $2F,X
-               LDA $30               ; Invert the output bit
+MAC3           STA $2F                 ; Store A to working byte
+               EOR $31                 ; Update check sum
+               STA $31                 ; Write checksum back
+               LDA #$08                ; Set bit counter to 8
+               STA $01                 ; Store bit counter
+MACD           ASL $2F                 ; Shift with carry ;Was ASL $2F,X
+               LDA $30                 ; Invert the output bit
                EOR #$07
-               JSR MAE5               ; Do half pulse
-               LDX #$11               ; Set timing
-               NOP                 ; Micro-delay
-               EOR #$80               ; Invert the outptut bit
-               JSR MAE5               ; Do half pulse
-               LDX #$0E            ; Set delay
-               DEC $01             ; Decrement bit counter
-               BNE MACD            ; If not all bits, loop
-               RTS                 ; Done, all 8 bits written
+               JSR MAE5                ; Do half pulse
+               LDX #$11                ; Set timing
+               NOP                     ; Micro-delay
+               EOR #$80                ; Invert the outptut bit
+               JSR MAE5                ; Do half pulse
+               LDX #$0E                ; Set delay
+               DEC $01                 ; Decrement bit counter
+               BNE MACD                ; If not all bits, loop
+               RTS                     ; Done, all 8 bits written
 
 ;Write half pulse
-MAE5           DEX               ; Delay loop 1
+MAE5           DEX                     ; Delay loop 1
                BNE MAE5                
-               LDX #$0E            ; Delay loop 2
+               LDX #$0E                ; Delay loop 2
 MAEA           DEX                   
                BNE MAEA
-               BCC MAF4               ; Bit is 0, skip
-               LDX #$13               ; Set delay
-MAF1           DEX               ; Delay loop 3
+               BCC MAF4                ; Bit is 0, skip
+               LDX #$13                ; Set delay
+MAF1           DEX                     ; Delay loop 3
                BNE MAF1
-MAF4           STA SKCTL           ; Modify SKCTL
+MAF4           STA SKCTL               ; Modify SKCTL
                RTS
 ;-------------------------------------------------------------------------------
 ; Terminate recording environment
@@ -356,7 +358,6 @@ RECENV_TERM    lda #64
                lda #34                
                sta DMACLT             
                rts
-
 ;-------------------------------------------------------------------------------
 ; Initiate recording environment;
 ;-------------------------------------------------------------------------------               
