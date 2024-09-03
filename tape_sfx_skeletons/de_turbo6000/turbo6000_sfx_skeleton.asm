@@ -242,110 +242,110 @@ DELAY_END          rts
 ;   zero is written instead as a padding byte,
 ; - The ID  byte is taken from the beginning of the block 
 ;=======================================================================
-WRITE_BLOCK	
-;Correct the buffer range (the table points one byte before the buffer,
-;we need to point past the id byte in the buffer)
-                    clc                 ;No carry
-                    lda BUFRLO          ;Get pointer
-                    adc #2              ;Increment by 2 (past ID)
-                    sta BUFRLO          ;Write back
-                    bcc @+              ;No carry, skip
-                    inc BUFRHI          ;Increment pointer HI.
-@
-;Set pilot tone duration
-	LDX #$05	;Pilot tone 5*256 pulses
-	STX $3E
-;Output pilot tone
-	JSR MAA0	;Write pilot tone
-	lda ZP_ID_BYTE      ;Identification byte
-	JSR MAC3	;Write identification byte
-	STY $31	
-	LDX #$07            ;Set delay
-	NOP
-;
-MA5E	LDA ($32),Y	;Get byte to write
-	JSR MAC3	;Write byte
-	LDX #$03	;Delay
-	INC $32	;Increment buffer pointer (LO)
-	BNE MA6D            ;Not overflow, skip
-	INC $33             ;Increment buffer pointer (HI)
-	DEX	;Delay compensation	
-	DEX                 ;Delay compensation
+WRITE_BLOCK               
+;Correct the buffer range
+; - The table entry points to the ID byte, we need it to point past the ID byte
+; - The buffer end must be incremented by 1
 
-MA6D	LDA $32	;Check EOF
-	CMP $34             ;Check if BURLO,HI == BFENLO,HI
-	LDA $33
-	SBC $35
-	BCC MA5E            ;Not EOF, continue loop
-	NOP	;EOF reached	 
+                   inc BUFRLO          ;Increment LO by 1
+                   bne @+              ;If not zeroed, skip
+                   inc BUFRHI          ;Increment HI by 1
+@
+                   inc BFENLO          ;Increment LO by 1
+                   bne @+              ;If not zeroed, skip
+                   inc BFENHI          ;Increment HI by 1
+@
+
+;Set pilot tone duration
+                   LDX #$05               ;Pilot tone 5*256 pulses
+                   STX $3E
+;Output pilot tone
+                   JSR MAA0               ;Write pilot tone
+                   lda ZP_ID_BYTE      ;Identification byte
+                   JSR MAC3               ;Write identification byte
+                   STY $31               
+                   LDX #$07            ;Set delay
+                   NOP
 ;
-MA78	LDA #0	;Take the checksum ;Was LDA $31
-	JSR MAC3            ;Write checksum byte
-	LDX #$07            ;Delay compensation
-	DEY                 ;Cycle Y
-	BNE MA78            ;Repeat
-;Over
-                    RTS
+MA5E               LDA ($32),Y               ;Get byte to write
+                   JSR MAC3               ;Write byte
+                   LDX #$03               ;Delay
+                   INC $32               ;Increment buffer pointer (LO)
+                   BNE MA6D            ;Not overflow, skip
+                   INC $33             ;Increment buffer pointer (HI)
+                   DEX               ;Delay compensation               
+                   DEX                 ;Delay compensation
+
+MA6D               LDA $32               ;Check EOF
+                   CMP $34             ;Check if BURLO,HI == BFENLO,HI
+                   LDA $33
+                   SBC $35
+                   BCC MA5E            ;Not EOF, continue loop
+                   NOP               ;EOF reached                
+;
+MA78               LDA #0              ;Take the checksum ;Was LDA $31
+                   JSR MAC3            ;Write padding byte
+;Writing is over
+                   RTS
 
 ;Write pilot tone
 ;Pilot tone begins with sequence of $02s
 ;And ends with $09,$08,$07...
-MAA0	NOP	 
-	LDY #$00	; Clear error flag
-	STY $30	 
-MAA5	LDA #$02	; Ready value $02
-	JSR MAC3            ; Do write byte
-	LDX #$07	; Set delay
-	DEY                 ; Decrement Y
-	CPY #$09            ; Did Y reach $09
-	BNE MAA5            ; No, keep outputting $02s
+MAA0               NOP                
+                   LDY #$00               ; Clear error flag
+                   STY $30                
+MAA5               LDA #$02               ; Ready value $02
+                   JSR MAC3            ; Do write byte
+                   LDX #$07               ; Set delay
+                   DEY                 ; Decrement Y
+                   CPY #$09            ; Did Y reach $09
+                   BNE MAA5            ; No, keep outputting $02s
 
-	LDX #$05	; Set delay
-	DEC $3E             ; Decrement pilot tone unit counter
-	BNE MAA5            ; If not all units written, repeat
+                   LDX #$05               ; Set delay
+                   DEC $3E             ; Decrement pilot tone unit counter
+                   BNE MAA5            ; If not all units written, repeat
 
 ;When enough $02 written, write the pilot tone end sequence
-MAB7	TYA	; #$09-->A
-	JSR MAC3	; Do write byte
-	LDX #$07            ; Set delay
-	DEY                 ; Decrement Y ($09,$08,...)
-	BNE MAB7            ; If not zero, continue sequence
-	DEX	; Timing correction	
-	DEX                 ; 
-	RTS                 ; Done with pilot tone
+MAB7               TYA               ; #$09-->A
+               JSR MAC3               ; Do write byte
+               LDX #$07            ; Set delay
+               DEY                 ; Decrement Y ($09,$08,...)
+               BNE MAB7            ; If not zero, continue sequence
+               DEX               ; Timing correction               
+               DEX                 ; 
+               RTS                 ; Done with pilot tone
 
 ;Write one byte (the byte is in A)
-MAC3	STA $2F	; Store A to working byte
-	EOR $31	; Update check sum
-	STA $31             ; Write checksum back
-	LDA #$08	; Set bit counter to 8
-	STA $01             ; Store bit counter
-MACD	ASL $2F,X	; Shift with carry
-	LDA $30	; Invert the output bit
-	EOR #$07
-	JSR MAE5	; Do half pulse
-	LDX #$11	; Set timing
-	NOP                 ; Micro-delay
-	EOR #$80	; Invert the outptut bit
-	JSR MAE5	; Do half pulse
-	LDX #$0E            ; Set delay
-	DEC $01             ; Decrement bit counter
-	BNE MACD            ; If not all bits, loop
-	RTS                 ; Done, all 8 bits written
+MAC3               STA $2F               ; Store A to working byte
+               EOR $31               ; Update check sum
+               STA $31             ; Write checksum back
+               LDA #$08               ; Set bit counter to 8
+               STA $01             ; Store bit counter
+MACD           ASL $2F               ; Shift with carry ;Was ASL $2F,X
+               LDA $30               ; Invert the output bit
+               EOR #$07
+               JSR MAE5               ; Do half pulse
+               LDX #$11               ; Set timing
+               NOP                 ; Micro-delay
+               EOR #$80               ; Invert the outptut bit
+               JSR MAE5               ; Do half pulse
+               LDX #$0E            ; Set delay
+               DEC $01             ; Decrement bit counter
+               BNE MACD            ; If not all bits, loop
+               RTS                 ; Done, all 8 bits written
 
 ;Write half pulse
-MAE5	DEX	; Delay loop 1
-	BNE MAE5	 
-	LDX #$0E            ; Delay loop 2
-MAEA	DEX                   
-	BNE MAEA
-
-	BCC MAF4	; Bit is 0, skip
-	LDX #$13	; Set delay
-MAF1	DEX	; Delay loop 3
-	BNE MAF1
-MAF4	STA SKCTL           ; Modify SKCTL
-	RTS
+MAE5           DEX               ; Delay loop 1
+               BNE MAE5                
+               LDX #$0E            ; Delay loop 2
+MAEA           DEX                   
+               BNE MAEA
+               BCC MAF4               ; Bit is 0, skip
+               LDX #$13               ; Set delay
+MAF1           DEX               ; Delay loop 3
+               BNE MAF1
+MAF4           STA SKCTL           ; Modify SKCTL
+               RTS
 ;-------------------------------------------------------------------------------
 ; Terminate recording environment
 ;-------------------------------------------------------------------------------               
