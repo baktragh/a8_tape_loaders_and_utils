@@ -24,6 +24,8 @@
 
                 ZP_IRG_LO       = 135
                 ZP_IRG_HI       = 136
+                ZP_BAUD_LO      = 137
+                ZP_BAUD_HI      = 138
 ;===============================================================================
 ; INITITALIZATION CODE - Switches off the display, so that
 ; loading data into the screen memory does no harm. Also ensure
@@ -126,9 +128,23 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    iny
                    lda (ZP_TAB_PTR_LO),Y
                    sta BFENHI
-                   iny
+
+                   iny                   ;Get block flag
                    lda (ZP_TAB_PTR_LO),Y
                    sta ZP_BLOCKFLAG 
+                                             
+                   iny                   ;Get extended block flags
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_BAUD_LO
+                   iny
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_BAUD_HI
+                   iny
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_IRG_LO
+                   iny
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_IRG_HI
 
                    lda BUFRLO             ;Check for terminator (all $FFs)
                    and BUFRHI
@@ -140,7 +156,7 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
 SAVE_DOBLOCK       jsr WRITE_BLOCK
 
                    clc                          ;Increment table pointer
-                   lda #5
+                   lda #9                       ;Table is 9 bytes long
                    adc ZP_TAB_PTR_LO
                    sta ZP_TAB_PTR_LO
                    bcc @+
@@ -252,8 +268,6 @@ DELAY_END          rts
 WRITE_BLOCK        
 
 ;Ensure correct IRG
-                   lda ZP_BLOCKFLAG        ;Check block flag
-                   beq WB_RANGE            ;Code 0, minimum IRG
                    jsr TAPE_IRG            ;Other code, specific IRG
 WB_RANGE
 ;Calculate the length of the block (BFEN-BUFR+1)
@@ -356,27 +370,12 @@ TAPE_TERM_POKEY   lda #0
                   rts 
 ;-------------------------------------------------------------------------------
 ; Tape IRG for PAL/NTSC
-; Input: ZP_BLOCKFLAG holds IRG duration code.
+; Input: ZP_IRG... hold the duration in number of VBLs
 ;-------------------------------------------------------------------------------
-TAPE_IRG         lda ZP_BLOCKFLAG            ;Double the code           
-                 clc
-                 adc ZP_BLOCKFLAG
-                 tax
-
-                 lda PAL                     ;Check GTIA region
-                 and #$0F                    ;Are we PAL, pals?
-                 bne TIRG_PAL                ;Yes, use PAL timing
-
-TIRG_NTSC        lda TIRG_TABLE_NTSC,X
-                 sta ZP_IRG_LO
-                 lda TIRG_TABLE_NTSC+1,X
-                 sta ZP_IRG_HI
-                 jmp TIRG_CORE  
-
-TIRG_PAL         lda TIRG_TABLE_PAL,X
-                 sta ZP_IRG_LO
-                 lda TIRG_TABLE_PAL+1,X
-                 sta ZP_IRG_HI
+TAPE_IRG         lda ZP_IRG_HI
+                 bne TIRG_CORE
+                 lda ZP_IRG_LO
+                 beq TIRG_EXIT                  
 ;-------------------------------------------------------------------------------
 TIRG_CORE
                  mwa #TAPE_COUNTDOWN_HANDLER CDTMA1
@@ -387,7 +386,7 @@ TIRG_CORE
                  sta timflg
                  jsr SETVBV
                  lda:rne timflg
-                 rts
+TIRG_EXIT        rts
 ;-------------------------------------------------------------------------------
 ; Countdown handler, just kills the TIMFLG
 ;-------------------------------------------------------------------------------
@@ -471,5 +470,5 @@ LINE_REC   .BYTE "RECORDING...        "
 ; Block data table
 ;===============================================================================
             DATA_TABLE=*
-            SFX_CAPACITY = 49152-DATA_TABLE-5-5-1
+            SFX_CAPACITY = 49152-DATA_TABLE-9-9-1
             START = START_ADDR     
