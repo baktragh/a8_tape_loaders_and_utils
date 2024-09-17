@@ -2,14 +2,12 @@
 ; Standard Tape Records Self-extractor skeleton   
 ; Assemble with the MADS assembler
 ;===============================================================================
-           
                  ICL "equates.asm" 
                  OPT H+,F-
-
 ;===============================================================================
 ; Private constants
 ;===============================================================================
-                START_ADDR      = 2688
+                START_ADDR      = 2640
                 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
@@ -104,7 +102,8 @@ SKIP_START         jsr BEEP
 ;-------------------------------------------------------------------------------
                    jsr SET_RECORDING_DL
                    jsr WAIT_FOR_VBLANK
-
+                   jsr TWIO_Init
+            
                    lda #52
                    sta PACTL
 
@@ -114,7 +113,7 @@ SKIP_START         jsr BEEP
                    ldy CFG_SEP_DURATION   ;Use delay for long separator
 NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-------------------------------------------------------------------------------
-                   jsr TAPE_INIT_POKEY
+                   
 ;-------------------------------------------------------------------------------      
 SAVE_LOOP          ldy #0                 ;Get buffer range
                    lda (ZP_TAB_PTR_LO),Y
@@ -171,7 +170,7 @@ SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 SAVE_TERM          lda #60                      ;Motor OFF
                    sta PACTL
 
-                   jsr TAPE_TERM_POKEY          ;Terminate POKEY
+                   jsr TWIO_TermPokey          ;Terminate POKEY
                    jsr SET_PRIMARY_DL           ;Back to primary DL 
                    jsr WAIT_FOR_VBLANK
 
@@ -267,180 +266,371 @@ DELAY_END          rts
 ;===============================================================================
 WRITE_BLOCK        
 
-;Ensure correct IRG
-                   jsr TAPE_IRG            ;Other code, specific IRG
+
 WB_RANGE
-;Calculate the length of the block (BFEN-BUFR+1)
+;Calculate the length of the block for TWIO call
                    sec
                    lda BFENLO
                    sbc BUFRLO
-                   sta ZP_SIO_LENLO
+                   sta DBYTLO
                    lda BFENHI
                    sbc BUFRHI
-                   sta ZP_SIO_LENHI
-
-                   inc ZP_SIO_LENLO
-                   bne @+
-                   inc ZP_SIO_LENHI
-@
-;Setup the buffer pointer for the SIO call.
-                   lda BUFRLO
-                   sta ZP_SIO_BUFRLO
-                   lda BUFRHI
-                   sta ZP_SIO_BUFRHI
-;Now prepare the SIO call
-                   lda #$60               ;Cassette
-                   sta DDEVIC
-                   lda #0                 
-                   sta DUNIT              ;Zero unit
-                   sta DUNUSE             ;Zero unused byte
-                   sta DAUX1              ;Zero AUX1 byte
- 
-                   lda #$80               ;Indicate
-                   sta DSTATS             ;Write
-                   sta DAUX2              ;Short tape IRG
-
-                   lda #$05               ;Set some bogus timeout         
-                   sta DTIMLO             
-
-                   lda #$50               ;Command = put sector
-                   sta DCOMND   
-
-                   lda ZP_SIO_BUFRLO      ;Set buffer address
-                   sta DBUFLO
-                   lda ZP_SIO_BUFRHI
-                   sta DBUFHI
-          
-                   lda ZP_SIO_LENLO       ;Set buffer length
-                   sta DBYTLO
-                   lda ZP_SIO_LENHI
                    sta DBYTHI
 
-                   jsr SIOV               ;Call SIO 
+                   inc DBYTLO
+                   bne @+
+                   inc DBYTHI
+@
+;Setup the buffer pointer for the TWIO call.
+                   lda BUFRLO
+                   sta DBUFLO
+                   lda BUFRHI
+                   sta DBUFHI
+
+;Now prepare the TWIO call
+                   lda ZP_IRG_LO         ;Set IRG duration       
+                   sta DDEVIC
+                   lda ZP_IRG_HI
+                   sta DUNIT                       
+                   lda ZP_BAUD_LO
+                   sta DAUX1
+                   lda ZP_BAUD_HI
+                   sta DAUX2    
+                   jsr TWIO_Entry         ;Call SIO 
 
                    rts
 ;===============================================================================
 ; Tape related subroutines
+; TWIO - SIO routine stripped off everything that is not related to writing
+;        cassette frames, some modification for adjustable baud rate. The code
+;        was taken from the AltirraOS sources.
 ;===============================================================================
+                   TWIOSuccess = $01
 ;-------------------------------------------------------------------------------
-;Initialize tape recording
+; TWIO Entry point
+; DBUFLO, DBUFHI - Buffer pointer
+; DBYTLO, DBYTHI - Number of bytes
+; DAUX1 - Baud rate lo (pokey settings)
+; DAUX2 - Baud rate hi (pokey settings)
+; DDEVIC - IRG lo (number of VBLs)
+; DUNIT - IRG hi (number of VBLs)
 ;-------------------------------------------------------------------------------
-TAPE_INIT_POKEY   lda SSKCTL              ;Get shadow          
-                  and #$0f                ;Reset serial control
-                  ora #$28                ;Set mode sync/timing mode+two tone
-                  sta SSKCTL              ;Set shadow and real port
-                  sta SKCTL
+TWIO_Entry
+                    ;set retry counters
+                    mva #$01 dretry
+                    ;enter critical section
+                    sta critic
 
-                  ldx #9                  ;Set POKEY regs for tape writing
-TIP_LOOP_REG      lda TIP_REGDATA-1,X
-                  sta AUDF1-1,X
-                  dex
-                  bne TIP_LOOP_REG
+                    tsx
+                    stx stackp
                     
-TIP_NOISY_AUDIO                          ;Ensure "noisy I/O"
-                  lda #$a8
-                  sta audc4
-                  lda #$10
-                  bit sskctl
-                  bne TIP_NOISY_DONE
-                  sta audc1
-                  sta audc2
-TIP_NOISY_DONE
+                    ;Set timeout timer address -- MUST be done on each call 
+                    jsr TWIO_SetTimeoutVector
 
-TIP_RESET_SERIAL_STATUS                    ;Reset serial port
-                  sta SKREST
-                  rts
-TIP_REGDATA
-                  dta $05                  ;audf1
-                  dta $a0                  ;audc1
-                  dta $07                  ;audf2
-                  dta $a0                  ;audc2
-                  dta $cc                  ;audf3
-                  dta $a0                  ;audc3
-                  dta $05                  ;audf4
-                  dta $a0                  ;audc4
-                  dta $28                  ;audctl
-;-------------------------------------------------------------------------------
-; Terminate POKEY setup for tape writing
-;-------------------------------------------------------------------------------
-TAPE_TERM_POKEY   lda #0
-                  sta audc1
-                  sta audc2
-                  sta audc4
-                  rts 
-;-------------------------------------------------------------------------------
-; Tape IRG for PAL/NTSC
-; Input: ZP_IRG... hold the duration in number of VBLs
-;-------------------------------------------------------------------------------
-TAPE_IRG         lda ZP_IRG_HI
-                 bne TIRG_CORE
-                 lda ZP_IRG_LO
-                 beq TIRG_EXIT                  
-;-------------------------------------------------------------------------------
-TIRG_CORE
-                 mwa #TAPE_COUNTDOWN_HANDLER CDTMA1
-                 ldy ZP_IRG_LO
-                 lda ZP_IRG_HI
-                 tax
-                 lda #1
-                 sta timflg
-                 jsr SETVBV
-                 lda:rne timflg
-TIRG_EXIT        rts
-;-------------------------------------------------------------------------------
-; Countdown handler, just kills the TIMFLG
-;-------------------------------------------------------------------------------
-TAPE_COUNTDOWN_HANDLER
-                 mva #0 timflg
-                 rts
-;-------------------------------------------------------------------------------
-; IRG TABLES
-;-------------------------------------------------------------------------------
-; PAL IRG Table
-TIRG_TABLE_PAL  .WORD 0                ;0.25
-                .WORD 1                ;0.27
-                .WORD 1                ;0.29
-                .WORD 2                ;0.30
-                .WORD 4                ;0.35
-                .WORD 7                ;0.4
-                .WORD 12               ;0.5
-                .WORD 27               ;0.8
-                .WORD 37               ;1.0
-                .WORD 62               ;1.5
-                .WORD 87               ;2.0
-                .WORD 107              ;2.4
-                .WORD 112              ;2.5
-                .WORD 137              ;3.0
-                .WORD 237              ;5.0
-                .WORD 387              ;8.0
-                .WORD 487              ;10.0
-                .WORD 587              ;12.0
-                .WORD 687              ;14.0
-                .WORD 787              ;16.0
-                .WORD 987              ;20.0
+                    ;Init POKEY hardware
+                    jsr TWIO_SE_InitHw
 
-; NTSC IRG Table
-TIRG_TABLE_NTSC .WORD 0                 ;0.25
-                .WORD 1                 ;0.27
-                .WORD 2                 ;0.29
-                .WORD 2                 ;0.30
-                .WORD 5                 ;0.35
-                .WORD 8                 ;0.4
-                .WORD 14                ;0.5
-                .WORD 32                ;0.8
-                .WORD 44                ;1.0
-                .WORD 74                ;1.5
-                .WORD 104               ;2.0
-                .WORD 128               ;2.4
-                .WORD 134               ;2.5
-                .WORD 164               ;3.0
-                .WORD 284               ;5.0
-                .WORD 464               ;8.0
-                .WORD 584               ;10.0
-                .WORD 704               ;12.0
-                .WORD 824               ;14.0
-                .WORD 944               ;16.0
-                .WORD 1184              ;20.0
+                    ;Go do cassette now
+                    jmp TWIO_Cassette                    
+                    
+TWIO_Exit:
+                    ldx stackp
+                    txs
+
+                    lda #0
+                    sta critic
+
+                    cpy #0               
+                    sty dstats
+                    sty status
+                    rts
+
+                    ldy #TWIOSuccess
+                    bne TWIO_Exit
+
+;-------------------------------------------------------------------------------
+; Initialize TWIO
+;-------------------------------------------------------------------------------
+TWIO_Init           ;turn off POKEY init mode so polynomial counters and audio run
+                    mva #3 skctl
+                    sta sskctl
+                    
+                    ;enable noisy sound, documented to be 3
+                    sta soundr
+
+                    lda #<TWIO_OutputReadyHandler
+                    sta VSEROR
+                    lda #>TWIO_OutputReadyHandler
+                    sta VSEROR+1
+
+                    lda #<TWIO_OutputCompleteHandler
+                    sta VSEROC
+                    lda #>TWIO_OutputCompleteHandler
+                    sta VSEROC+1
+
+                    rts
+;-------------------------------------------------------------------------------
+; Set timeout vector
+;-------------------------------------------------------------------------------'
+TWIO_SetTimeoutVector
+
+                    mwa #TWIO_Countdown1Handler cdtma1
+                    rts
+;-------------------------------------------------------------------------------
+;TWIO send enable routine
+;
+; This is one of those routines that Atari inadvisably exposed in the OS jump
+; table even though they shouldn't. Responsibilities of this routine are:
+; - Hit SKCTL to reset serial hardware and init for sending
+; - Hit SKRES to clear status
+; - Enable send interrupts
+; - Configure AUDF3/AUDF4 frequency (19200 baud or 600 baud)
+; - Set AUDC3/AUDC4 for noisy or non-noisy audio
+; - Set AUDCTL
+;
+; It does not init any of the TWIO variables, only hardware/shadow state.
+;-------------------------------------------------------------------------------
+
+TWIO_SendEnable
+                    ;enable serial output ready IRQ and suppress serial output complete IRQ
+                    lda pokmsk
+                    ora #$10
+                    and #$f7
+                    sta pokmsk
+                    sta irqen
+
+                    ;clear forced break mode and reset serial clocking mode to timer 4
+                    ;synchronous; also enable two-tone mode if in cassette mode
+                    lda sskctl
+                    and #$0f
+                    ora #$20
+                    ldx #$FF
+                    ora #$08
+                    sta sskctl
+                    sta skctl
+
+TWIO_SE_InitHw      ldx #8
+
+                    ;load POKEY audio registers
+                    ldy #8
+                    mva:rpl regdata_cassette_write,x- audf1,y-
+
+                    ;Override the baud rate
+                    lda DAUX1
+                    sta AUDF3
+                    lda DAUX2
+                    sta AUDF4
+
+                    lda #$a8
+                    sta audc4
+                    lda #$10
+                    sta audc1
+                    sta audc2
+                    ;reset serial status
+                    sta skrest
+                    rts
+
+regdata_cassette_write:
+                    dta $05 ;audf1
+                    dta $a0 ;audc1
+                    dta $07 ;audf2
+                    dta $a0 ;audc2
+                    dta $cc ;audf3
+                    dta $a0 ;audc3
+                    dta $05 ;audf4
+                    dta $a0 ;audc4
+                    dta $28 ;audctl
+
+;-------------------------------------------------------------------------------
+; Setup buffer pointers
+;-------------------------------------------------------------------------------
+TWIO_SetupBufferPointers
+
+                    clc
+                    lda dbuflo
+                    sta bufrlo
+                    adc dbytlo
+                    sta bfenlo
+                    lda dbufhi
+                    sta bufrhi
+                    adc dbythi
+                    sta bfenhi
+                    rts
+
+;-------------------------------------------------------------------------------
+;TWIO send routine
+;-------------------------------------------------------------------------------
+TWIO_Send
+                    ;configure serial port for synchronous transmisTWIOn
+                    ;enable transmission IRQs
+                    sei
+                    jsr TWIO_SendEnable
+                    
+                    ldy #0
+                    sty xmtdon
+                    sty status
+                    sty chksnt
+                    
+                    ;send first byte and set checksum (must be atomic)
+                    lda (bufrlo),y
+                    sta serout
+                    sta chksum
+
+                    ;unmask IRQs
+                    cli
+                    
+                    ;wait for transmit to complete or Break to be pressed
+wait:
+                    lda brkkey
+                    beq break_detected
+                    lda xmtdon
+                    beq wait
+                    bne send_completed
+
+break_detected:
+                    ldy #$80
+                    sty status
+                    dec brkkey ;reset brkkey to $FF (init value)
+                    
+send_completed:
+                    ;shut off transmisTWIOn IRQs
+                    sei
+                    lda pokmsk
+                    and #$e7
+                    sta pokmsk
+                    sta irqen
+                    cli
+
+                    ;we're done
+                    tya
+                    rts
+;-------------------------------------------------------------------------------
+; TWIO serial output ready routine
+; BUFRLO/BUFRHI: On entry, points to one LESS than the next byte to write.
+; BFENLO/BFENHI: Points to byte immediately after buffer.
+; CHKSUM: Holds running checksum as bytes are output.
+; CHKSNT: $00 if checksum not yet sent, $FF if checksum sent.
+; POKMSK: Used to enable the serial output complete IRQ after sending checksum
+;-------------------------------------------------------------------------------
+TWIO_OutputReadyHandler
+                    ;increment buffer pointer
+                    inc bufrlo
+                    bne addrcc
+                    inc bufrhi
+addrcc:
+                    ;compare against buffer end
+                    lda bufrlo
+                    cmp bfenlo
+                    lda bufrhi
+                    sbc bfenhi                                                            ;set flags according to (dst - end)
+                    bcs doChecksum
+
+                    ;save Y
+                    tya
+                    pha
+
+                    ;send out next byte
+                    ldy #0
+                    lda (bufrlo),y
+                    sta serout
+                    
+                    ;update checksum
+                    adc chksum
+                    adc #0
+                    sta chksum
+
+                    ;restore registers and exit
+                    pla
+                    tay
+                    pla
+                    rti
+                    
+doChecksum:
+                    ;send checksum
+                    lda chksum
+                    sta serout
+                    
+                    ;set checksum sent flag
+                    mva #$ff chksnt
+                    
+                    ;enable output complete IRQ and disable serial output IRQ
+                    lda pokmsk
+                    ora #$08
+                    and #$ef
+                    sta pokmsk
+                    sta irqen
+                    
+                    pla
+                    rti
+
+
+;==============================================================================
+TWIO_OutputCompleteHandler
+                    ;check that we've sent the checksum
+                    lda chksnt
+                    beq TWIO_OCH_Exit
+                    
+                    ;we're done sending the checksum
+                    sta xmtdon
+                    
+                    ;need to shut off this interrupt as it is not latched
+                    lda pokmsk
+                    and #$f7
+                    sta pokmsk
+                    sta irqen
+
+TWIO_OCH_Exit
+                    pla
+                    rti
+;==============================================================================
+TWIO_Countdown1Handler
+                    ;signal operation timeout
+                    mva #0 timflg
+                    rts
+;==============================================================================
+TWIO_Cassette
+                    jsr TWIO_CassetteWriteFrame
+                    jmp TWIO_Exit
+;==============================================================================
+TWIO_CassetteWriteFrame
+                    ;wait for pre-record write tone or IRG read delay
+                    ldx #2
+                    jsr TWIO_CassetteWait
+
+                    ;set up to transmit
+                    jsr TWIO_SendEnable
+                    
+                    ;setup buffer pointers
+                    jsr TWIO_SetupBufferPointers
+                    
+                    ;send data frame
+                    jsr TWIO_Send
+                    
+                    ;all done
+                    jmp TWIO_Exit
+
+;-------------------------------------------------------------------------------
+; Wait to generate IRG
+;-------------------------------------------------------------------------------
+TWIO_CassetteWait
+                    jsr TWIO_SetTimeoutVector
+                    ldy DDEVIC                  ;Delay VBLs LO
+                    lda DUNIT                   ;Delay VBLs HI
+                    tax
+                    lda #1
+                    sta timflg
+                    jsr SETVBV
+                    lda:rne timflg
+                    rts
+;-------------------------------------------------------------------------------
+; Terminate pokey
+;-------------------------------------------------------------------------------
+TWIO_TermPokey      lda #0
+                    ldx #9
+@                   sta AUDF1-1,X
+                    dex
+                    bne @-
+                    rts 
 ;===============================================================================
 ; DISPLAY DATA
 ;===============================================================================
