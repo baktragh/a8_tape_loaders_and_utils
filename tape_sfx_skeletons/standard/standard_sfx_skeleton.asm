@@ -7,7 +7,7 @@
 ;===============================================================================
 ; Private constants
 ;===============================================================================
-                START_ADDR      = 2640
+                START_ADDR      = $0AF0
                 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
@@ -291,8 +291,9 @@ WB_RANGE
                    lda ZP_IRG_LO         ;Set IRG duration       
                    sta DDEVIC
                    lda ZP_IRG_HI
-                   sta DUNIT                       
-                   lda ZP_BAUD_LO
+                   sta DUNIT             
+          
+                   lda ZP_BAUD_LO        ;Set baud rate
                    sta DAUX1
                    lda ZP_BAUD_HI
                    sta DAUX2    
@@ -547,8 +548,8 @@ addrcc:
                     
 doChecksum:
                     ;send checksum
-                    lda chksum
-                    sta serout
+;                    lda chksum
+;                    sta serout
                     
                     ;set checksum sent flag
                     mva #$ff chksnt
