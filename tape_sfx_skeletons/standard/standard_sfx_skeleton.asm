@@ -399,7 +399,7 @@ TWIO_SendEnable
                     and #$f7
                     sta pokmsk
                     sta irqen
-
+TWIO_SendEnableNoIRQ
                     ;clear forced break mode and reset serial clocking mode to timer 4
                     ;synchronous; also enable two-tone mode if in cassette mode
                     lda sskctl
@@ -595,6 +595,7 @@ TWIO_Cassette
 ;==============================================================================
 TWIO_CassetteWriteFrame
                     ;wait for pre-record write tone or IRG read delay
+                    jsr TWIO_SendEnableNoIRQ
                     ldx #2
                     jsr TWIO_CassetteWait
 
