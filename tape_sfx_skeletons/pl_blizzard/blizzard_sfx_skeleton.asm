@@ -240,7 +240,7 @@ DELAY_BLOCK_AFTER  lda ZP_BLOCKFLAG            ;Check block type
 @                  lda ZP_BLOCKFLAG            ;Check again
                    and #BLIZZARD_BLOCK_HASINIT ;Block with INIT?                  
                    beq DBA_NORM                ;Nope, just ordinary one
-                   ldy #5                      ;Force 0.5 seconds
+                   ldy #20                     ;Force 2 seconds
                    bne DBA_WAIT                ;And do it.
 
 DBA_NORM           ldy CFG_S_AFTER_BLOCK       ;Ordindary block
