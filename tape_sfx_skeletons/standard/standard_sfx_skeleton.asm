@@ -4,6 +4,11 @@
 ;===============================================================================
                  ICL "equates.asm" 
                  OPT H+,F-
+                 
+;===============================================================================
+; Global constants
+;===============================================================================
+                 ICL "../commons/gconstants.asm"                          
 ;===============================================================================
 ; Private constants
 ;===============================================================================
@@ -11,7 +16,6 @@
                 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
-                VBI_VCOUNT      = 124
                 
                 ZP_BLOCKFLAG    = 130
                 
@@ -24,64 +28,28 @@
                 ZP_IRG_HI       = 136
                 ZP_BAUD_LO      = 137
                 ZP_BAUD_HI      = 138
-;===============================================================================
-; INITITALIZATION CODE - Switches off the display, so that
-; loading data into the screen memory does no harm. Also ensure
-; that RESET results in cold start.
-;===============================================================================
-                   ORG  START_ADDR      
-                   ldy #0
-                   sty SDMCTL
-                   iny
-                   sty COLDST
-                   jsr IN_WBV
-                   jsr IN_WBV
-
-IN_WBV             lda #VBI_VCOUNT
-IN_WBV_L           cmp VCOUNT
-                   bne IN_WBV_L
-                   rts     
-                   
-                   ORG INITAD
-                   .WORD START_ADDR
-            
-;===============================================================================
+;=======================================================================
+; INITITALIZATION CODE 
+;=======================================================================
+                ICL "../commons/preinit.asm"            
+;=======================================================================
 ; MAINLINE CODE
-;===============================================================================
+;=======================================================================
                    ORG START_ADDR
                    jmp ENTRY_ADDR
 ;-----------------------------------------------------------------------
 ; Screen lines
 ;-----------------------------------------------------------------------
-;                          0123456789012345678901234567890123456789   
-LINE_NAME   .BYTE         "nnnnnnnnnnnnnnnnnnnn"
-
-LINE_TITLE  .BYTE         "tttttttttttttttttttttttttttttttttttt ppp"
-
-LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
-            .BYTE         "Then press START to begin recording.    "     
+                ICL "../commons/screen.asm"
 ;-----------------------------------------------------------------------
 ; Configuration
 ;-----------------------------------------------------------------------
-CFG_FLAGS  .BYTE  0
-           CFG_F_COMPOSITE = $80       ;Part of composite
-           CFG_F_LONGSEP   = $40       ;Long separator
-           CFG_F_ALARM     = $20       ;Alarm after saving
-CFG_SEP_DURATION .BYTE (3*50)
-CFG_SAFETY_DELAY .BYTE 5
+                ICL "../commons/gconfig.asm"
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
-ENTRY_ADDR         jsr WAIT_FOR_VBLANK
-                   jsr SET_PRIMARY_DL
-                   jsr WAIT_FOR_VBLANK ;Enable the screen
-                   lda #34
-                   sta SDMCTL
-                   lda #0
-                   sta COLOR2
-                   lda #$4A
-                   sta COLOR0
-                   sta COLOR1                                       
+ENTRY_ADDR         
+                ICL "../commons/screeni.asm"                                       
 ;-----------------------------------------------------------------------
 ; Prepare to save
 ;-----------------------------------------------------------------------
@@ -100,7 +68,6 @@ SKIP_START         jsr BEEP
 ; - Silence for file separation
 ; - Setup POKEY for writing cassette frames with customized IRGs
 ;-------------------------------------------------------------------------------
-                   jsr SET_RECORDING_DL
                    jsr WAIT_FOR_VBLANK
                    jsr TWIO_Init
             
@@ -171,8 +138,6 @@ SAVE_TERM          lda #60                      ;Motor OFF
                    sta PACTL
 
                    jsr TWIO_TermPokey          ;Terminate POKEY
-                   jsr SET_PRIMARY_DL           ;Back to primary DL 
-                   jsr WAIT_FOR_VBLANK
 
                    bit CFG_FLAGS                ;Check for composite flg ($80)
                    bmi SAVE_QUIT                ;If composite, quit
@@ -185,79 +150,13 @@ SAVE_ALARM         jsr BEEP                     ;Three beeps for alarm
                    jsr BEEP
 SAVE_AGAIN         jmp READY_SAVE               ;Otherwise start over    
 SAVE_QUIT          rts          
-;===============================================================================
-; KEYBOARD SUBROUTINES
-;===============================================================================                   
-;-------------------------------------------------------------------------------
-; Wait for START 
-;-------------------------------------------------------------------------------
-WAIT_FOR_START     lda #8
-                   sta CONSOL
-WFS_LOOP           lda CONSOL             ;What keys?  
-                   cmp #6                 ;Is that START?
-                   beq WFS_DONE           ;Yes, we are done
-                   bne WFS_LOOP
-WFS_DONE           rts
-;===============================================================================
-; OTHER SUBROUTINES
-;===============================================================================                   
-;-------------------------------------------------------------------------------
-; Beep
-;-------------------------------------------------------------------------------                   
-BEEP               lda #0
-                   sta AUDCTL
-                   lda #$AF
-                   sta AUDC1
-                   lda #$10
-                   sta AUDF1
-                   ldx #20
-BELL_1             jsr WAIT_FOR_VBLANK
-                   dex
-                   bne BELL_1
-                   stx AUDC1                     ;Reset AUDC1 and AUDF1
-                   stx AUDF1
-                   rts
-;-------------------------------------------------------------------------------
-; Wait for VBLANK
-;-------------------------------------------------------------------------------
-WAIT_FOR_VBLANK    lda #VBI_VCOUNT             ;Get the desired value
-WFV_1              cmp VCOUNT                  ;Check
-                   bne WFV_1                   ;If equal, keep checking
-WFV_2              cmp VCOUNT
-                   beq WFV_2                   
-                   rts           
-;-------------------------------------------------------------------------------
-; Set primary DL
-;-------------------------------------------------------------------------------
-SET_PRIMARY_DL
-                   sei                                 
-                   lda #<DLIST          ;Setup display list
-                   sta SDLSTL
-                   lda #>DLIST
-                   sta SDLSTH
-                   cli
-                   rts
-;-------------------------------------------------------------------------------
-; Set recording DL
-;-------------------------------------------------------------------------------
-SET_RECORDING_DL
-                   sei                                 
-                   lda #<DLIST_R        ;Setup display list
-                   sta SDLSTL
-                   lda #>DLIST_R
-                   sta SDLSTH
-                   cli
-                   rts
-;-------------------------------------------------------------------------------
-; Short delay
-;-------------------------------------------------------------------------------                   
-DELAY_SHORT        ldy #5                  ;Short delay, 0.1 sec
-DELAY_CUSTOM_Y     jmp DELAY_WAIT
-
-DELAY_WAIT         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
-                   dey                     ;Decrement counter
-                   bne DELAY_WAIT          ;Repeat until not zero
-DELAY_END          rts
+;=======================================================================
+; Common Auxiliary Subroutines
+;=======================================================================
+                   ICL "../commons/aux.asm"                   
+;=======================================================================
+; Private Auxiliary Subroutines
+;=======================================================================                   
 ;===============================================================================
 ; Write block of data
 ; Inputs:
@@ -633,28 +532,10 @@ TWIO_TermPokey      lda #0
                     dex
                     bne @-
                     rts 
-;===============================================================================
-; DISPLAY DATA
-;===============================================================================
-;-------------------------------------------------------------------------------
-; Display list
-;-------------------------------------------------------------------------------
-;Primary display list
-DLIST      .BYTE 112,112,112
-           .BYTE 7+64,<LINE_NAME,>LINE_NAME
-           .BYTE 112,112
-           .BYTE 2+64,<LINE_TITLE,>LINE_TITLE
-           .BYTE $30
-           .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2
-           .BYTE 65,<DLIST,>DLIST
-
-;Display list used while recording
-DLIST_R    .BYTE 112,112,112
-           .BYTE 6+64,<LINE_REC,>LINE_REC
-           .BYTE 65,<DLIST_R,>DLIST_R
-
-;                 12345678901234567890
-LINE_REC   .BYTE "RECORDING...        " 
+;=======================================================================
+; DISPLAY list
+;=======================================================================
+               ICL "../commons/dlist.asm"
 ;===============================================================================
 ; DATA AREAS
 ;===============================================================================

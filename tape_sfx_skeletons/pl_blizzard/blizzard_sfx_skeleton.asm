@@ -5,13 +5,16 @@
                  ICL "equates.asm" 
                  OPT H+,F-
 ;=======================================================================
+; Global constants
+;=======================================================================
+                 ICL "../commons/gconstants.asm"                 
+;=======================================================================
 ; Private constants
 ;=======================================================================
                 START_ADDR      = 2700
 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
-                VBI_VCOUNT      = 124
                 
                 ZP_BLOCKFLAG    = 130
                 CIOCHR          = $2F
@@ -20,26 +23,9 @@
                 BLIZZARD_BLOCK_HEADER = $40
                 BLIZZARD_BLOCK_HASINIT = $20
 ;=======================================================================
-; INITITALIZATION CODE - Switches off the display, so that
-; loading data into the screen memory does no harm. Also ensure
-; that RESET results in cold start.
+; INITITALIZATION CODE 
 ;=======================================================================
-                   ORG  START_ADDR      
-                   ldy #0
-                   sty SDMCTL
-                   iny
-                   sty COLDST
-                   jsr IN_WBV
-                   jsr IN_WBV
-
-IN_WBV             lda #VBI_VCOUNT
-IN_WBV_L           cmp VCOUNT
-                   bne IN_WBV_L
-                   rts     
-                   
-                   ORG INITAD
-                   .WORD START_ADDR
-            
+                ICL "../commons/preinit.asm"            
 ;=======================================================================
 ; MAINLINE CODE
 ;=======================================================================
@@ -48,22 +34,11 @@ IN_WBV_L           cmp VCOUNT
 ;-----------------------------------------------------------------------
 ; Screen lines
 ;-----------------------------------------------------------------------
-;                          0123456789012345678901234567890123456789   
-LINE_NAME   .BYTE         "nnnnnnnnnnnnnnnnnnnn"
-
-LINE_TITLE  .BYTE         "tttttttttttttttttttttttttttttttttttt ppp"
-
-LINE_INSTR  .BYTE         "Insert blank tape. Press PLAY+RECORD.   "
-            .BYTE         "Then press START to begin recording.    "     
+                ICL "../commons/screen.asm"
 ;-----------------------------------------------------------------------
 ; Configuration
 ;-----------------------------------------------------------------------
-CFG_FLAGS  .BYTE  0
-           CFG_F_COMPOSITE = $80       ;Part of composite
-           CFG_F_LONGSEP   = $40       ;Long separator
-           CFG_F_ALARM     = $20       ;Alarm after saving
-CFG_SEP_DURATION .BYTE (3*45)
-CFG_SAFETY_DELAY .BYTE 5               ;Safety delay (VBLs)
+                ICL "../commons/gconfig.asm"
 ;------------------------------------------------------------------------
 ; Silence configuration
 ;------------------------------------------------------------------------
@@ -74,23 +49,8 @@ CFG_S_AFTER_BLOCK  .BYTE $88
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
-ENTRY_ADDR         jsr WAIT_FOR_VBLANK
-
-                   sei                                 
-                   lda #<DLIST          ;Setup display list
-                   sta SDLSTL
-                   lda #>DLIST
-                   sta SDLSTH
-                   cli
-
-                   jsr WAIT_FOR_VBLANK ;Enable the screen
-                   lda #34
-                   sta SDMCTL
-                   lda #0
-                   sta COLOR2
-                   lda #$8A
-                   sta COLOR0
-                   sta COLOR1                                       
+ENTRY_ADDR         
+                ICL "../commons/screeni.asm"           
 ;-----------------------------------------------------------------------
 ; Prepare to save
 ;-----------------------------------------------------------------------
@@ -178,48 +138,12 @@ SAVE_ALARM         jsr BEEP                     ;Three beeps for alarm
 SAVE_AGAIN         jmp READY_SAVE               ;Otherwise start over    
 SAVE_QUIT          rts          
 ;=======================================================================
-; KEYBOARD SUBROUTINES
-;=======================================================================                   
-;-----------------------------------------------------------------------
-; Wait for START 
-;-----------------------------------------------------------------------
-WAIT_FOR_START     lda #8
-                   sta CONSOL
-WFS_LOOP           lda CONSOL             ;What keys?  
-                   cmp #6                 ;Is that START?
-                   beq WFS_DONE           ;Yes, we are done
-                   bne WFS_LOOP
-WFS_DONE           rts
-                   
+; Common Auxiliary Subroutines
 ;=======================================================================
-; OTHER SUBROUTINES
-;=======================================================================                   
-;-----------------------------------------------------------------------
-; Beep
-;-----------------------------------------------------------------------                   
-BEEP 	           lda #0
-                   sta AUDCTL
-                   lda #$AF
-                   sta AUDC1
-                   lda #$10
-                   sta AUDF1
-                   ldx #20
-BELL_1             jsr WAIT_FOR_VBLANK
-                   dex
-                   bne BELL_1
-                   stx AUDC1                     ;Reset AUDC1 and AUDF1
-                   stx AUDF1
-                   rts
-;-----------------------------------------------------------------------
-; Wait for VBLANK
-;-----------------------------------------------------------------------
-WAIT_FOR_VBLANK    lda #VBI_VCOUNT             ;Get the desired value
-WFV_1              cmp VCOUNT                  ;Check
-                   bne WFV_1                   ;If equal, keep checking
-WFV_2              cmp VCOUNT
-                   beq WFV_2                   
-                   rts             
-
+                   ICL "../commons/aux.asm"                   
+;=======================================================================
+; Private Auxiliary Subroutines
+;=======================================================================
 ;-----------------------------------------------------------------------
 ; Delay after block
 ;-----------------------------------------------------------------------                   
@@ -262,27 +186,7 @@ DBB_WAIT           cpy #0                      ;Is there zero delay?
                    beq DBB_END                 ;Yes, skip it.
                    jsr DELAY_TENTHS
 DBB_END            rts
-;-----------------------------------------------------------------------
-; Delay atoms
-;-----------------------------------------------------------------------
-DELAY_TENTHS       jsr DELAY_TENTH
-                   dey
-                   bne DELAY_TENTHS
-                   rts
 
-DELAY_TENTH        ldx #5
-@                  jsr DELAY_TICK
-                   dex 
-                   bne @-
-                   rts
-
-DELAY_TICK         jsr WAIT_FOR_VBLANK     ;Wait for VBLANK
-DELAY_END          rts
-
-DELAY_CUSTOM_Y     jsr WAIT_FOR_VBLANK
-                   dey
-                   bne DELAY_CUSTOM_Y
-                   rts
 ;=======================================================================
 ; Write block of data, turbo blizzard
 ; BUFRLO,BUFRHI - BFENHO,BFENHI - Buffer Range
@@ -503,18 +407,9 @@ RECENV_INIT    ldy #0
                clc
                rts               
 ;=======================================================================
-; DISPLAY DATA
+; DISPLAY list
 ;=======================================================================
-;-----------------------------------------------------------------------
-; Display list
-;-----------------------------------------------------------------------
-DLIST      .BYTE 112,112,112
-           .BYTE 7+64,<LINE_NAME,>LINE_NAME
-           .BYTE 112,112
-           .BYTE 2+64,<LINE_TITLE,>LINE_TITLE
-           .BYTE $30
-           .BYTE 2+64,<LINE_INSTR,>LINE_INSTR,2
-           .BYTE 65,<DLIST,>DLIST
+               ICL "../commons/dlist.asm"
 ;=======================================================================
 ; DATA AREAS
 ;=======================================================================
