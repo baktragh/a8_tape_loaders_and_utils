@@ -144,6 +144,7 @@ RELO_P2_L lda  1024-128,X
 ;-------------------------------------------------------------------------------
 ; Loader mainline code
 ;-------------------------------------------------------------------------------
+ENTRY
 .IF LDR_CFG=C_PMG          
           jsr SET_PROGRESS        ;Set progress indicators
 .ENDIF          
@@ -510,7 +511,7 @@ CFG_LUMA      .BYTE 0           ;Luminance
                                 ; .1.. .... Atract suppresion flag 
 CFG_RESERVE   .BYTE 0           ;Reserve for future use
 CFG_CLRSCR    .BYTE 125         ;Clear screen character
-CFG_TITLE     .BYTE '                              ' ;30
+CFG_TITLE     .BYTE 'LBE                           ' ;30
 CFG_EOL       .BYTE $9B         ;End of line
 
 ;===============================================================================
@@ -523,6 +524,6 @@ BLOCK_BUFFER
 ; RUN segment
 ;===============================================================================
 .IF BUILD=B_XEX
-          RUN BLTOP
+          RUN ENTRY
           
 .ENDIF       
