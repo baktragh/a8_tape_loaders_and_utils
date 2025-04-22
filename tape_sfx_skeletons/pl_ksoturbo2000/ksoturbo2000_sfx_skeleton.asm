@@ -18,9 +18,9 @@
                 ZP_TAB_PTR_HI   = 129
                 
                 ZP_BLOCKFLAG    = 130
+                ZP_SILENCE      = 131
 
                 KSO_T2000_PILOT_LONG = $80
-                KSO_T2000_GAP_LONG   = $08
 ;=======================================================================
 ; INITITALIZATION CODE 
 ;=======================================================================
@@ -38,13 +38,6 @@
 ; Configuration
 ;-----------------------------------------------------------------------
                 ICL "../commons/gconfig.asm"
-;------------------------------------------------------------------------
-; Silence configuration
-;------------------------------------------------------------------------
-CFG_S_BEFORE_SYNC  .BYTE $88
-CFG_S_AFTER_SYNC   .BYTE $88
-CFG_S_AFTER_HEADER .BYTE $88
-CFG_S_AFTER_BLOCK  .BYTE $88
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
@@ -78,21 +71,20 @@ SKIP_START         jsr BEEP
                    ldy CFG_SEP_DURATION   ;Use delay for long separator
 NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-----------------------------------------------------------------------      
-SAVE_LOOP          ldy #0                 ;Get buffer range
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRLO
+SAVE_LOOP          ldx #4
+                   ldy #0                 ;Get buffer range
+@                  lda (ZP_TAB_PTR_LO),Y
+                   sta BUFRLO,Y
                    iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRHI
-                   iny 
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENLO
-                   iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENHI
-                   iny
+                   dex
+                   bne @-
+                   
                    lda (ZP_TAB_PTR_LO),Y
                    sta ZP_BLOCKFLAG 
+                   iny 
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_SILENCE
+                   iny
 
                    lda BUFRLO
                    and BUFRHI
@@ -100,20 +92,23 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    and BFENHI
                    cmp #$FF
                    beq SAVE_TERM
+                   
+SAVE_DOSILENCE                   
+                   ldy ZP_SILENCE               ;Silence before the block
+                   beq SAVE_DOWRITE             ;Yes, skip
+                   jsr DELAY_TENTHS             ;Otherwise, do silence
     
-SAVE_DOBLOCK       jsr ADJUST_BUFFER            ;Adjust buffer
+SAVE_DOWRITE       jsr ADJUST_BUFFER            ;Adjust buffer
                    
                    jsr WRITE_BLOCK
 
                    clc                          ;Increment table pointer
-                   lda #5
+                   lda #6
                    adc ZP_TAB_PTR_LO
                    sta ZP_TAB_PTR_LO
                    bcc SAVE_CONT
                    inc ZP_TAB_PTR_HI  
-
-;Add some gaps between blocks
-SAVE_CONT          jsr DELAY_BLOCK
+SAVE_CONT          
 
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
@@ -136,21 +131,10 @@ SAVE_QUIT          rts
 ;=======================================================================
 ; Common Auxiliary Subroutines
 ;=======================================================================
-                   ICL "../commons/aux.asm"                   
+                   ICL "../commons/routines.asm"                   
 ;=======================================================================
 ; Private Auxiliary Subroutines
 ;=======================================================================        
-;-----------------------------------------------------------------------
-; Block delay
-;-----------------------------------------------------------------------
-DELAY_BLOCK        ldy #10                 ;Default is 0.2 sec
-                   lda ZP_BLOCKFLAG        ;Check block flag
-                   and #KSO_T2000_GAP_LONG ;Is it elongated?
-                   beq DB_WAIT             ;No, stick to default
-                   ldy #100                ;Yes, set to 2 seconds
-                   
-DB_WAIT            jsr DELAY_CUSTOM_Y      ;Call custom delay
-                   rts                     ;And return
 ;-----------------------------------------------------------------------
 ; Adjust buffer
 ;-----------------------------------------------------------------------
@@ -350,5 +334,5 @@ RECENV_INIT    lda #$00               ; Disable NMIs
 ; Segment data table
 ;=======================================================================
             DATA_TABLE=*  
-            SFX_CAPACITY = 49152-DATA_TABLE-5-5-1
+            SFX_CAPACITY = 49152-DATA_TABLE-6-6-1
             START = START_ADDR
