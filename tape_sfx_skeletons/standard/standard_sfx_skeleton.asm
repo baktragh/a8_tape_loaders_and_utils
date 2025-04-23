@@ -12,22 +12,22 @@
 ;===============================================================================
 ; Private constants
 ;===============================================================================
-                START_ADDR      = $0AF0
+                START_ADDR      = 2700
                 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
                 
                 ZP_BLOCKFLAG    = 130
-                
-                ZP_SIO_BUFRLO   = 131
-                ZP_SIO_BUFRHI   = 132
-                ZP_SIO_LENLO    = 133
-                ZP_SIO_LENHI    = 134
+                ZP_BAUD_LO      = 131
+                ZP_BAUD_HI      = 132
+                ZP_IRG_LO       = 133
+                ZP_IRG_HI       = 134
 
-                ZP_IRG_LO       = 135
-                ZP_IRG_HI       = 136
-                ZP_BAUD_LO      = 137
-                ZP_BAUD_HI      = 138
+                ZP_SIO_BUFRLO   = 135
+                ZP_SIO_BUFRHI   = 136
+                ZP_SIO_LENLO    = 137
+                ZP_SIO_LENHI    = 138
+
 ;=======================================================================
 ; INITITALIZATION CODE 
 ;=======================================================================
@@ -62,6 +62,9 @@ READY_SAVE         lda #<DATA_TABLE        ;Reset the table and counter
                    bmi SKIP_START         ;If $80 (composite)
                    jsr WAIT_FOR_START     ;Wait for START key
 SKIP_START         jsr BEEP
+                   lda #0
+                   sta SDMCTL
+                   jsr WAIT_FOR_VBLANK
 ;-------------------------------------------------------------------------------
 ;Initiate recording
 ; - Motor ON
@@ -82,36 +85,23 @@ NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-------------------------------------------------------------------------------
                    
 ;-------------------------------------------------------------------------------      
-SAVE_LOOP          ldy #0                 ;Get buffer range
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRLO
+SAVE_LOOP
+SAVE_GBUFRANGE     ldx #4
+                   ldy #0                 ;Get buffer range
+@                  lda (ZP_TAB_PTR_LO),Y
+                   sta BUFRLO,Y
                    iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRHI
-                   iny 
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENLO
-                   iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENHI
+                   dex
+                   bne @-
 
-                   iny                   ;Get block flag
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta ZP_BLOCKFLAG 
-                                             
-                   iny                   ;Get extended block flags
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta ZP_BAUD_LO
+SAVE_GBLKMETA
+                   ldx #5
+@                  lda (ZP_TAB_PTR_LO),Y  ;Index in the table entry
+                   sta ZP_BLOCKFLAG-4,Y   ;The offset is biased by 4
                    iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta ZP_BAUD_HI
-                   iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta ZP_IRG_LO
-                   iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta ZP_IRG_HI
-
+                   dex
+                   bne @-
+                  
                    lda BUFRLO             ;Check for terminator (all $FFs)
                    and BUFRHI
                    and BFENLO
@@ -134,10 +124,15 @@ SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ; - Motor off
 ; - RESET POKEY
 ;-------------------------------------------------------------------------------
-SAVE_TERM          lda #60                      ;Motor OFF
+SAVE_TERM          
+                   lda #60                      ;Motor OFF
                    sta PACTL
 
                    jsr TWIO_TermPokey          ;Terminate POKEY
+                   
+                   lda #34
+                   sta SDMCTL
+                   jsr WAIT_FOR_VBLANK
 
                    bit CFG_FLAGS                ;Check for composite flg ($80)
                    bmi SAVE_QUIT                ;If composite, quit
@@ -153,7 +148,7 @@ SAVE_QUIT          rts
 ;=======================================================================
 ; Common Auxiliary Subroutines
 ;=======================================================================
-                   ICL "../commons/aux.asm"                   
+                   ICL "../commons/routines.asm"                   
 ;=======================================================================
 ; Private Auxiliary Subroutines
 ;=======================================================================                   

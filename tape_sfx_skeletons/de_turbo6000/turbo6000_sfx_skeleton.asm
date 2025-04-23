@@ -1,7 +1,6 @@
 ;=======================================================================
 ; Turbo 6000 Self-extractor skeleton   
 ; Assemble with the MADS assembler
-;
 ;=======================================================================
            
                  ICL "equates.asm" 
@@ -13,13 +12,14 @@
 ;=======================================================================
 ; Private constants
 ;=======================================================================
-                START_ADDR      = 2800
+                START_ADDR      = 2700
                 
                 ZP_TAB_PTR_LO   = 128
                 ZP_TAB_PTR_HI   = 129
                 
                 ZP_BLOCKFLAG    = 130
                 ZP_ID_BYTE      = 131
+                ZP_SILENCE      = 132
 ;=======================================================================
 ; INITITALIZATION CODE 
 ;=======================================================================
@@ -68,21 +68,20 @@ SKIP_START         jsr BEEP
                    ldy CFG_SEP_DURATION   ;Use delay for long separator
 NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-----------------------------------------------------------------------      
-SAVE_LOOP          ldy #0                 ;Get buffer range
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRLO
+SAVE_LOOP          ldx #4
+                   ldy #0                 ;Get buffer range
+@                  lda (ZP_TAB_PTR_LO),Y
+                   sta BUFRLO,Y
                    iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRHI
-                   iny 
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENLO
-                   iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENHI
-                   iny
+                   dex
+                   bne @-
+                   
                    lda (ZP_TAB_PTR_LO),Y
                    sta ZP_BLOCKFLAG 
+                   iny 
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_SILENCE
+                   iny
 
                    lda BUFRLO
                    and BUFRHI
@@ -90,23 +89,26 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    and BFENHI
                    cmp #$FF
                    beq SAVE_TERM
-    
-SAVE_DOBLOCK       ldy #0                       ;Get ID byte
+                   
+SAVE_DOSILENCE                   
+                   ldy ZP_SILENCE               ;Silence before the block
+                   beq SAVE_DOWRITE             ;Yes, skip
+                   jsr DELAY_TENTHS             ;Otherwise, do silence
+SAVE_DOWRITE			
+                   ldy #0                       ;Get ID byte
                    lda (BUFRLO),Y
                    sta ZP_ID_BYTE
-                   
                    jsr WRITE_BLOCK
 
+SAVE_TONEXT
                    clc                          ;Increment table pointer
-                   lda #5
+                   lda #6                       ;By 6 bytes
                    adc ZP_TAB_PTR_LO
                    sta ZP_TAB_PTR_LO
                    bcc SAVE_CONT
                    inc ZP_TAB_PTR_HI  
 
-;Add some gaps between blocks
-SAVE_CONT          jsr DELAY_BLOCK
-
+SAVE_CONT          
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
 SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
@@ -127,17 +129,7 @@ SAVE_QUIT          rts
 ;=======================================================================
 ; Common Auxiliary Subroutines
 ;=======================================================================
-                   ICL "../commons/aux.asm"                   
-;=======================================================================
-; Private Auxiliary Subroutines
-;=======================================================================   
-;-----------------------------------------------------------------------
-; Block delay
-;-----------------------------------------------------------------------                   
-DELAY_BLOCK        ldy #5                  ;Default is 0.1 sec
-                   jsr DELAY_CUSTOM_Y
-                   rts
-
+                   ICL "../commons/routines.asm"                   
 ;=======================================================================
 ; Write block of data
 ; Inputs:
@@ -296,5 +288,5 @@ RECENV_INIT    ldy #0
 ; Segment data table
 ;=======================================================================
             DATA_TABLE=*  
-            SFX_CAPACITY = 49152-DATA_TABLE-5-5-1
+            SFX_CAPACITY = 49152-DATA_TABLE-6-6-1
             START = START_ADDR
