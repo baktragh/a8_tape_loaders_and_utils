@@ -17,11 +17,11 @@
                 ZP_TAB_PTR_HI   = 129
                 
                 ZP_BLOCKFLAG    = 130
+                ZP_SILENCE      = 131
                 CIOCHR          = $2F
 
                 BLIZZARD_BLOCK_SYNC = $80
                 BLIZZARD_BLOCK_HEADER = $40
-                BLIZZARD_BLOCK_HASINIT = $20
 ;=======================================================================
 ; INITITALIZATION CODE 
 ;=======================================================================
@@ -39,13 +39,6 @@
 ; Configuration
 ;-----------------------------------------------------------------------
                 ICL "../commons/gconfig.asm"
-;------------------------------------------------------------------------
-; Silence configuration
-;------------------------------------------------------------------------
-CFG_S_BEFORE_SYNC  .BYTE $88
-CFG_S_AFTER_SYNC   .BYTE $88
-CFG_S_AFTER_HEADER .BYTE $88
-CFG_S_AFTER_BLOCK  .BYTE $88
 ;------------------------------------------------------------------------
 ;Initialization
 ;------------------------------------------------------------------------
@@ -77,21 +70,20 @@ SKIP_START         jsr BEEP
                    ldy CFG_SEP_DURATION   ;Use delay for long separator
 NORM_SEP           jsr DELAY_CUSTOM_Y     ;Make the delay
 ;-----------------------------------------------------------------------      
-SAVE_LOOP          ldy #0                 ;Get buffer range
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRLO
+SAVE_LOOP          ldx #4
+                   ldy #0                 ;Get buffer range
+@                  lda (ZP_TAB_PTR_LO),Y
+                   sta BUFRLO,Y
                    iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BUFRHI
-                   iny 
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENLO
-                   iny
-                   lda (ZP_TAB_PTR_LO),Y
-                   sta BFENHI
-                   iny
+                   dex
+                   bne @-
+                   
                    lda (ZP_TAB_PTR_LO),Y
                    sta ZP_BLOCKFLAG 
+                   iny 
+                   lda (ZP_TAB_PTR_LO),Y
+                   sta ZP_SILENCE
+                   iny
 
                    lda BUFRLO
                    and BUFRHI
@@ -99,27 +91,23 @@ SAVE_LOOP          ldy #0                 ;Get buffer range
                    and BFENHI
                    cmp #$FF
                    beq SAVE_TERM
-    
-SAVE_DOBLOCK       
-;Add gap before the block
-                  jsr DELAY_BLOCK_BEFORE
-
-;Write the block  
+                   
+SAVE_DOSILENCE                   
+                   ldy ZP_SILENCE               ;Silence before the block
+                   beq SAVE_DOWRITE             ;Yes, skip
+                   jsr DELAY_TENTHS             ;Otherwise, do silence
+SAVE_DOWRITE			
                    
                    jsr WRITE_BLOCK
-
+                   
 ;Continue to the next block
-
                    clc                          
-                   lda #5
+                   lda #6
                    adc ZP_TAB_PTR_LO
                    sta ZP_TAB_PTR_LO
                    bcc SAVE_CONT
                    inc ZP_TAB_PTR_HI  
-
-;Add gap after the block
-SAVE_CONT          jsr DELAY_BLOCK_AFTER
-
+SAVE_CONT
 SAVE_NEXTBLOCK     jmp SAVE_LOOP                ;Continue saving.
 ;-----------------------------------------------------------------------
 SAVE_TERM          jsr RECENV_TERM              ;Back with DMA and INTRs
@@ -140,57 +128,10 @@ SAVE_QUIT          rts
 ;=======================================================================
 ; Common Auxiliary Subroutines
 ;=======================================================================
-                   ICL "../commons/aux.asm"                   
-;=======================================================================
-; Private Auxiliary Subroutines
-;=======================================================================
-;-----------------------------------------------------------------------
-; Delay after block
-;-----------------------------------------------------------------------                   
-DELAY_BLOCK_AFTER  lda ZP_BLOCKFLAG            ;Check block type
-                   beq DBA_NORM                ;Ordinary block, norm. delay
-
-                   and #BLIZZARD_BLOCK_SYNC    ;Is that sync block?
-                   beq @+                      ;No, skip
-                   ldy CFG_S_AFTER_SYNC        ;Yes, load # of tenths
-                   jmp DBA_WAIT
-
-@                  lda ZP_BLOCKFLAG            ;Check again
-                   and #BLIZZARD_BLOCK_HEADER  ;Is that header block?
-                   beq @+                      ;No, skip
-                   ldy CFG_S_AFTER_HEADER      ;Yes, load # of tenths 
-                   jmp DBA_WAIT
- 
-@                  lda ZP_BLOCKFLAG            ;Check again
-                   and #BLIZZARD_BLOCK_HASINIT ;Block with INIT?                  
-                   beq DBA_NORM                ;Nope, just ordinary one
-                   ldy #20                     ;Force 2 seconds
-                   bne DBA_WAIT                ;And do it.
-
-DBA_NORM           ldy CFG_S_AFTER_BLOCK       ;Ordindary block
-DBA_WAIT           cpy #0                      ;Is there zero delay?
-                   beq DBA_EXIT                ;Yes, skip it.
-                   jsr DELAY_TENTHS
-DBA_EXIT           rts
-;-----------------------------------------------------------------------
-; Delay before block
-;-----------------------------------------------------------------------                   
-DELAY_BLOCK_BEFORE lda ZP_BLOCKFLAG            ;Check block type
-                   beq DBB_END
-
-                   and #BLIZZARD_BLOCK_SYNC    ;Is that sync block?
-                   beq DBB_END                 ;No, skip
-                   ldy CFG_S_BEFORE_SYNC       ;Yes, load # of tenths
-
-DBB_WAIT           cpy #0                      ;Is there zero delay?
-                   beq DBB_END                 ;Yes, skip it.
-                   jsr DELAY_TENTHS
-DBB_END            rts
-
+                   ICL "../commons/routines.asm"                   
 ;=======================================================================
 ; Write block of data, turbo blizzard
 ; BUFRLO,BUFRHI - BFENHO,BFENHI - Buffer Range
-; 
 ;=======================================================================
 WRITE_BLOCK       
 j0DAB             JSR DO_BUFFER_SETUP    ;Setup the buffer range
@@ -417,5 +358,5 @@ RECENV_INIT    ldy #0
 ; Segment data table
 ;=======================================================================
             DATA_TABLE=*
-            SFX_CAPACITY = 49152-DATA_TABLE-5-5-1
+            SFX_CAPACITY = 49152-DATA_TABLE-6-6-1
             START = START_ADDR
