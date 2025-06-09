@@ -154,11 +154,7 @@ INC_TPTR9
 ;-------------------------------------------------------------------------------
             dta c'@COP'                
 PAYLOAD_START
-.IF FNAME_LEN=8
-            INS 'build\body8.bin'
-.ELSE
-            INS 'build\body10.bin'
-.ENDIF 
+            INS 'build\body11.bin'
 PAYLOAD_END   EQU *
 ;-------------------------------------------------------------------------------
 ; Run segment

@@ -22,15 +22,14 @@ Atari800 with a8cas extensions, Altirra.
 - [atari800-a8cas modified](http://www.arus.net.pl/FUJI/a8cas-util/downloads/modified-atari800-emulator.html)
 - [Altirra](https://www.virtualdub.org/altirra.html)
 
-There is no point in running this copier with real hardware as there is no H1: host device.
+## Notes
+
+- The H1: device provided by the emulator must be configured to support long file names
+- Running this copier with real computer doesn't work
 
 ## Binaries
 
-There are two binaries shipped:
-
-- copyth10.xex. Writes 10-character names to the H1: device. Use with the atari800-a8cas emulators, or Altirra 4.10-test2 and above.
-- copyth8.xex. Writes 8-character names to the H1: device. Use with the Altirra emulator version up to 4.10-test1. Be advised that because of the short names, files can get overwritten.
-
+- copyth11.xex. Writes 11-character names to the H1: device.
 
 ## Why this copier was written
 

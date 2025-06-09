@@ -42,7 +42,10 @@
 ; Note: Use version 4.10-test2 and newer. This version supports long
 ;       file names for the H1: device.
 ;
-; 
+; Maintenance log
+; Version 1.1 - Support for 11-character file names, the 11th character
+;               is a simple numerical iterator (0-9), which reduces the risk
+;               of overwriting files with identical names.
 ;*******************************************************************************
             ICL 'equates.asm'
             
@@ -108,7 +111,7 @@ L05D7       lda #<THEADER     ;Setup address where turbo header will be placed
 ;Open the listing file
            jsr OPEN_LISTING
            
-;Place file name
+;Place file name               ;Always 10 characters
            ldx #10
 @          lda TH_NAME-1,x
            sta PL_NAME-1,x
@@ -466,7 +469,7 @@ DLIST       dta AEMPTY8,AEMPTY8,AEMPTY8
             dta AVB+AJMP
             dta <DLIST,>DLIST
                  ;1234567890123456789012345678901234567890
-DISPLINE1   dta d'COPY T/H 1.0 (C) 2021 BAKTRA Software   '
+DISPLINE1   dta d'COPY T/H 1.1-11 (C) 2025 BAKTRA Software'
 DISPLINE2   dta d'                                        '     
 
 SETSCREEN    sei
@@ -867,7 +870,12 @@ CAS_SAFP_L  EQU *-CAS_FILE
 CAS_F_LEN   dta $FF,$FF                                   ;Data length
             dta $0C,$1A
             dta $FF                                       ;Id byte
-CAS_FILE_L  equ *-CAS_FILE                             
+CAS_FILE_L  equ *-CAS_FILE
+                             
+NAME_ITER   dta c'0'                                      ;Name iterator
+NAME_CURR   dta c' '                                      ;Name character
+NAME_BADC   dta c'<>|*?\/:"'                              ;table of bad chars
+NAME_BADC_L equ *-NAME_BADC                               ;length of the table
 
 ;===============================================================================
 ;H: device general routines
@@ -901,16 +909,38 @@ MAKE_FNAME
             pha
             
 ;Move the filename
-            ldx #HFNAME_LEN
+            ldx #(HFNAME_LEN-1)
 FN1         lda TH_NAME-1,X
-
-;Fiter out undesired characters
-            cmp #$30          ;Is char <$30
-            bcs FN2           ;If not, then skip  
-FNX         lda #$58          ;Otherwise force 'X'
-            jmp FN5
+            sta NAME_CURR
             
-FN2         cmp #$3A          ;Is char <$3A?         
+            cmp #$20          ;IS char <$20
+            bcc FNX           ;It is, place 'X'
+
+;Fiter out undesired characters using tabke
+FNBC        txa               ;Backup The X register
+            pha
+            ldx #NAME_BADC_L  ;Get the length of bad chars table
+FNBC_L      lda NAME_CURR     ;Get the current letter
+            cmp NAME_BADC-1,X ;Compare with table entry
+            beq FNBC_E1       ;If bad char, quit and replace with X
+            dex               ;Decrement x
+            bne FNBC_L        ;Continue loop
+FNBC_E2     pla               ;Restore the X register
+            tax
+            jmp FN2           ;Continue to further checks            
+            
+FNBC_E1     pla               ;Restore the X register
+            tax             
+
+;Force X              
+FNX         lda #$58          ;Force 'X'
+            jmp FN5
+
+;Other checks
+FN2
+            lda NAME_CURR
+                        
+            cmp #$3A          ;Is char <$3A?         
             bcc FN5           ;Yes, then use the char (it is a number)
             
             cmp #$41          ;Is char <$41?
@@ -929,11 +959,25 @@ FN2         cmp #$3A          ;Is char <$3A?
             jmp FN5
             
 FN3         jmp FNX           ;In other cases, just replace with 'X'      
-                     
+
+;Place the character                     
 FN5         sta HDEV_FILEN-1,X
             dex
             bne FN1
             
+;Place iterating character
+            ldx #HFNAME_LEN
+            lda NAME_ITER
+            sta HDEV_FILEN-1,X
+
+;Iterate the character
+            inc NAME_ITER     ;Iterate
+            lda NAME_ITER     ;Check what it is
+            cmp #':'          ;Over 9?
+            bne @+            ;No, just skip
+            lda #'0'          ;Back to 0
+            sta NAME_ITER     ;Write back
+@            
 ;Place extension - either XEX or CAS 
             ldx #3
             cpy #0
