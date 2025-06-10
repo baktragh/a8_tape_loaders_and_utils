@@ -75,6 +75,9 @@
 ;Initialize the copier
 L05D2       jsr CASINIT       ;Setup DOS vectors   
             jsr SETSCREEN     ;Setup the screen
+            
+            lda #'0'          ;Reset the character iterator 0..9
+            sta NAME_ITER
                 
             lda #MI_START
             jsr DISP_MSG      ;Display the start message
@@ -188,6 +191,15 @@ L0622       lda ICAX6Z        ;Preserve data block check sum
             ldy #1
             jsr MAKE_FNAME
             jsr STORE_TAPEIMAGE
+            
+;;Iterate the character
+            inc NAME_ITER     ;Iterate
+            lda NAME_ITER     ;Check what it is
+            cmp #':'          ;Over 9?
+            bne @+            ;No, just skip
+            lda #'0'          ;Back to 0
+            sta NAME_ITER     ;Write back
+@            
             
 ;And when done with all this, go and load next file            
             jmp L05D7
@@ -970,14 +982,7 @@ FN5         sta HDEV_FILEN-1,X
             lda NAME_ITER
             sta HDEV_FILEN-1,X
 
-;Iterate the character
-            inc NAME_ITER     ;Iterate
-            lda NAME_ITER     ;Check what it is
-            cmp #':'          ;Over 9?
-            bne @+            ;No, just skip
-            lda #'0'          ;Back to 0
-            sta NAME_ITER     ;Write back
-@            
+           
 ;Place extension - either XEX or CAS 
             ldx #3
             cpy #0
