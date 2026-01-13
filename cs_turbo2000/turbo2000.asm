@@ -92,8 +92,9 @@ L0631       sta LTEMP         ;Keep the requested first byte value
             ldy #0
             sty STATUS
             sty CHKSUM
-            sty NMIEN
-            sty DMACLT
+
+            sty NMIEN         ;Disable DLI and VBI
+            sty DMACLT        ;Disable the screen DMA
             php
 
 ;-------------------------------------------------------------------------------
@@ -236,4 +237,5 @@ DOSINIT     ldx #<ENTRY_ADDR
             stx BOOT
             dex
             stx COLDST
+
             rts 
